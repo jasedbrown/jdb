@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use nix::sys::ptrace;
+use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::waitpid;
 use nix::unistd::{ForkResult, Pid, execvp, fork};
 use std::ffi::{CStr, CString};
@@ -23,8 +24,6 @@ pub struct Process {
     cli_options: Options,
     /// State of the inferior process.
     state: ProcessState,
-    /// Command line arguments to the process (if jdb has spawned it)
-    arguments: Option<String>,
     /// PID of the process. Optional in case it's not currently running (and need to be
     /// spawned as an inferior process).
     pid: Option<Pid>,
@@ -37,24 +36,21 @@ impl Process {
                 cli_options,
                 pid: Some(Pid::from_raw(pid)),
                 state: ProcessState::Unknown,
-                arguments: None,
             },
-            LaunchType::Name { name, args } => Process {
+            LaunchType::Name { name } => Process {
                 cli_options: Options {
                     launch_type: LaunchType::Name {
                         name,
-                        args: args.clone(),
                     },
                 },
                 pid: None,
                 state: ProcessState::Stopped,
-                arguments: Some(args),
             },
         }
     }
 
     /// Attach to the process, spawning a new process if we only have a name.
-    pub fn attach(&mut self) -> Result<()> {
+    pub fn attach(&mut self, args: Vec<String>) -> Result<()> {
         // this is a good enough check for now, just don't hold it wrong
         if matches!(self.state, ProcessState::Running) {
             return Ok(());
@@ -62,7 +58,7 @@ impl Process {
 
         let pid = match self.cli_options.launch_type {
             LaunchType::Pid { pid } => attach_pid(pid)?,
-            LaunchType::Name { ref name, .. } => launch_file(name, &self.arguments)?,
+            LaunchType::Name { ref name } => launch_file(name, args)?,
         };
 
         waitpid(pid, None)?;
@@ -83,6 +79,34 @@ impl Process {
 
         Ok(())
     }
+
+    pub fn destroy(&mut self) -> Result<()> {
+        if !matches!(self.state, ProcessState::Running) {
+            return Ok(());
+        }
+
+        let pid = self.pid.expect("PID should be a value");
+
+        // tell the inferior to STOP and wait for it
+        kill(pid, Some(Signal::SIGSTOP))?;
+        waitpid(pid, None)?;
+
+        // let the inferior know we are done tracing it
+        ptrace::detach(pid, None)?;
+        kill(pid, Some(Signal::SIGCONT))?;
+
+        // if the debugger launched the process, we need to kill it
+        if self.cli_options.launch_type.terminate_on_exit() {
+            kill(pid, Some(Signal::SIGKILL))?;
+            waitpid(pid, None)?;
+            self.state = ProcessState::Terminated
+        } else {
+            // TODO: I am not sure this is correct
+            self.state = ProcessState::Stopped;
+        }
+
+        Ok(())
+    }
 }
 
 fn attach_pid(pid: i32) -> Result<Pid> {
@@ -92,7 +116,7 @@ fn attach_pid(pid: i32) -> Result<Pid> {
     Ok(p)
 }
 
-fn launch_file(name: &Path, _args: &Option<String>) -> Result<Pid> {
+fn launch_file(name: &Path, _args: Vec<String>) -> Result<Pid> {
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child }) => {
             waitpid(child, None)?;

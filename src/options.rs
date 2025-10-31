@@ -16,10 +16,17 @@ pub enum LaunchType {
         // Path to process executable
         #[arg(short = 'n', long = "name")]
         name: PathBuf,
-        // Arguments to the process
-        #[arg(long = "args")]
-        args: String,
     },
+}
+
+impl LaunchType {
+    /// Should the inferior process be terminated when debugging is complete?
+    pub fn terminate_on_exit(&self) -> bool {
+        match self {
+            LaunchType::Pid { .. } => false,
+            LaunchType::Name { .. } => true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Parser)]

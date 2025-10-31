@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use rustyline::config::BellStyle;
 use rustyline::{Config, DefaultEditor};
 
@@ -31,15 +31,62 @@ impl Debugger {
 
     pub fn next(&mut self, process: &mut Process) -> Result<()> {
         let line = self.line_reader.readline("(jdb) ")?;
-        println!("{:?}", line);
+        if line.is_empty() {
+            return Ok(());
+        }
 
-        // history mgmt
+        println!("{:?}", line);
+        
         let _ = self.line_reader.add_history_entry(line.as_str());
+
+        let cmd = Command::try_from(line)?;
+        self.dispatch_command(cmd, process)?;
+
         self.line_reader.append_history(HISTORY_FILE)?;
 
-        // assume 'continue' and wait for the inferior process
-        process.resume()?;
+        Ok(())
+    }
+
+    fn dispatch_command(&mut self, command: Command, process: &mut Process) -> Result<()> {
+        match command {
+            Command::Run(args) => {
+                process.attach(args)?;
+                self.debugging = true;
+            },
+            Command::Continue => process.resume()?,
+            Command::Quit => {
+                process.destroy()?;
+                self.debugging = false;
+            }
+        }
 
         Ok(())
     }
 }
+
+#[derive(Clone, Debug)]
+pub enum Command {
+    Run(Vec<String>),
+    Continue,
+    Quit,
+}
+
+impl TryFrom<String> for Command {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Command> {
+        let mut words = value.split_whitespace();
+        let cmd = words.next().unwrap_or("").to_string();
+        let args: Vec<String> = words.map(|s| s.to_string()).collect();
+
+        let command = match cmd.to_lowercase().as_str() {
+            "run" | "r" => Command::Run(args),
+            "continue" | "c" => Command::Continue,
+            "quit" | "q" => Command::Quit,
+            _ => return Err(anyhow!("unknown command: {:?}", value))
+        };
+
+        Ok(command)
+    }
+}
+

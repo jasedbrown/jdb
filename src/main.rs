@@ -10,8 +10,11 @@ fn main() -> Result<()> {
     let mut process = Process::new(options);
 
     // start main loop here
-
-    process.attach()?;
+    loop {
+        if debugger.next(&mut process).is_err() {
+            break;
+        }
+    }
 
     Ok(())
 }
