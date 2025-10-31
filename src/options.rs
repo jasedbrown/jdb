@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 
 #[derive(Clone, Debug, Subcommand)]
@@ -26,4 +27,19 @@ pub enum LaunchType {
 pub struct Options {
     #[command(subcommand)]
     pub launch_type: LaunchType,
+}
+
+impl Options {
+    pub fn validate(&self) -> Result<()> {
+        match self.launch_type {
+            LaunchType::Pid { pid } => {
+                if pid <= 0 {
+                    return Err(anyhow!("PID must be greater than zero: {:?}", pid));
+                }
+            }
+            LaunchType::Name { .. } => {}
+        }
+
+        Ok(())
+    }
 }
