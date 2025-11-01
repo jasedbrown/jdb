@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
 use anyhow::{anyhow, Result};
 use rustyline::config::BellStyle;
 use rustyline::{Config, DefaultEditor};
 
+use crate::options::Options;
 use crate::process::Process;
 
 const HISTORY_FILE: &str = "~/.cache/jdb/history";
@@ -10,10 +13,11 @@ pub struct Debugger {
     line_reader: DefaultEditor,
     /// Flag if the program is currently being debugged
     debugging: bool,
+    history_file: PathBuf,
 }
 
 impl Debugger {
-    pub fn new() -> Result<Debugger> {
+    pub fn new(cli_options: &Options) -> Result<Debugger> {
         let config = Config::builder()
             .edit_mode(rustyline::EditMode::Emacs)
             .max_history_size(10000)?
@@ -21,33 +25,35 @@ impl Debugger {
             .tab_stop(4)
             .build();
         let mut line_reader = DefaultEditor::with_config(config)?;
-        let _ = line_reader.load_history(HISTORY_FILE);
+
+        let history_file = resolve_history_file(&cli_options.history_file)?;
+        let _ = line_reader.load_history(&history_file);
 
         Ok(Debugger {
             line_reader,
             debugging: false,
+            history_file,
         })
     }
 
-    pub fn next(&mut self, process: &mut Process) -> Result<()> {
+    pub fn next(&mut self, process: &mut Process) -> Result<DispatchResult> {
         let line = self.line_reader.readline("(jdb) ")?;
         if line.is_empty() {
-            return Ok(());
+            return Ok(DispatchResult::Normal);
         }
 
-        println!("{:?}", line);
-        
         let _ = self.line_reader.add_history_entry(line.as_str());
 
         let cmd = Command::try_from(line)?;
-        self.dispatch_command(cmd, process)?;
+        let result = self.dispatch_command(cmd, process)?;
 
-        self.line_reader.append_history(HISTORY_FILE)?;
+        self.line_reader.append_history(&self.history_file)?;
 
-        Ok(())
+        Ok(result)
     }
 
-    fn dispatch_command(&mut self, command: Command, process: &mut Process) -> Result<()> {
+    fn dispatch_command(&mut self, command: Command, process: &mut Process) -> Result<DispatchResult> {
+        let mut res = DispatchResult::Normal;
         match command {
             Command::Run(args) => {
                 process.attach(args)?;
@@ -57,11 +63,33 @@ impl Debugger {
             Command::Quit => {
                 process.destroy()?;
                 self.debugging = false;
+                res = DispatchResult::Exit;
             }
         }
 
-        Ok(())
+        Ok(res)
     }
+}
+
+fn resolve_history_file(history_file: &Option<PathBuf>) -> Result<PathBuf> {
+    let file_name = match &history_file {
+        Some(s) => s.to_str().expect("Must be a valid path"),
+        None => HISTORY_FILE,
+    };
+
+    let fname = if file_name.starts_with("~/") {
+        dirs::home_dir().map(|home| home.join(&file_name[2..]))
+    } else {
+        PathBuf::from(file_name).into()
+    };
+
+    Ok(fname.expect("Must have resolved hsitory file"))
+}
+
+#[derive(Clone, Debug)]
+pub enum DispatchResult {
+    Normal,
+    Exit,
 }
 
 #[derive(Clone, Debug)]

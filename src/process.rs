@@ -42,6 +42,7 @@ impl Process {
                     launch_type: LaunchType::Name {
                         name,
                     },
+                    history_file: cli_options.history_file.clone(),
                 },
                 pid: None,
                 state: ProcessState::Stopped,
