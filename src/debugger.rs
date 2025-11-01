@@ -11,8 +11,9 @@ const HISTORY_FILE: &str = "~/.cache/jdb/history";
 
 pub struct Debugger {
     line_reader: DefaultEditor,
-    /// Flag if the program is currently being debugged
+    /// Flag if the program is currently being debugged.
     debugging: bool,
+    /// Resolved (absolute) path to the history file.
     history_file: PathBuf,
 }
 
@@ -59,7 +60,10 @@ impl Debugger {
                 process.attach(args)?;
                 self.debugging = true;
             },
-            Command::Continue => process.resume()?,
+            Command::Continue => {
+                process.resume()?;
+                process.wait_on_signal()?;
+            }
             Command::Quit => {
                 process.destroy()?;
                 self.debugging = false;

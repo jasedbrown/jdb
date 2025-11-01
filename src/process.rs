@@ -1,7 +1,7 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use nix::sys::ptrace;
 use nix::sys::signal::{kill, Signal};
-use nix::sys::wait::waitpid;
+use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{ForkResult, Pid, execvp, fork};
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;
@@ -11,10 +11,15 @@ use crate::options::{LaunchType, Options};
 
 #[derive(Clone, Debug)]
 pub enum ProcessState {
+    /// Debugger hasn't attached to or launched the inferior process, so we don't
+    /// know what it's state is yet.
     Unknown,
+    /// The inferior process is stopped, awaiting a nudge from debugger.
     Stopped,
     Running,
+    /// The inferior process exited normally.
     Exited,
+    /// The inferior process terminated, either normally or forcefully.
     Terminated,
 }
 
@@ -45,40 +50,48 @@ impl Process {
                     history_file: cli_options.history_file.clone(),
                 },
                 pid: None,
-                state: ProcessState::Stopped,
+                state: ProcessState::Unknown,
             },
         }
     }
 
     /// Attach to the process, spawning a new process if we only have a name.
     pub fn attach(&mut self, args: Vec<String>) -> Result<()> {
-        // this is a good enough check for now, just don't hold it wrong
-        if matches!(self.state, ProcessState::Running) {
-            return Ok(());
-        }
-
         let pid = match self.cli_options.launch_type {
             LaunchType::Pid { pid } => attach_pid(pid)?,
             LaunchType::Name { ref name } => launch_file(name, args)?,
         };
 
-        waitpid(pid, None)?;
-
+        // TODO: not sure about setting the state here to Running ...
         self.state = ProcessState::Running;
         self.pid = Some(pid);
+        self.wait_on_signal()?;
         Ok(())
     }
 
-    pub fn resume(&self) -> Result<()> {
-        if !matches!(self.state, ProcessState::Running) {
-            return Err(anyhow!("process is not being debugged currently"));
+    pub fn resume(&mut self) -> Result<()> {
+        if !matches!(self.state, ProcessState::Stopped | ProcessState::Running) {
+            return Err(anyhow!("Inferior process not being debugged"));
         }
-
+        
         let pid = self.pid.unwrap();
         ptrace::cont(pid, None)?;
-        waitpid(pid, None)?;
+        self.state = ProcessState::Running;
 
         Ok(())
+    }
+
+    pub fn wait_on_signal(&mut self) -> Result<WaitStatus> {
+        let wait_status = waitpid(self.pid, None)?;
+
+        match wait_status {
+            WaitStatus::Exited(_, _) => self.state = ProcessState::Exited,
+            WaitStatus::Signaled(_, _, _) => self.state = ProcessState::Terminated,
+            WaitStatus::Stopped(_, _) => self.state = ProcessState::Stopped,
+            _ => (),
+        }
+        
+        Ok(wait_status)
     }
 
     pub fn destroy(&mut self) -> Result<()> {
@@ -99,11 +112,9 @@ impl Process {
         // if the debugger launched the process, we need to kill it
         if self.cli_options.launch_type.terminate_on_exit() {
             kill(pid, Some(Signal::SIGKILL))?;
-            waitpid(pid, None)?;
-            self.state = ProcessState::Terminated
+            self.wait_on_signal()?;
         } else {
-            // TODO: I am not sure this is correct
-            self.state = ProcessState::Stopped;
+            self.state = ProcessState::Unknown;
         }
 
         Ok(())
@@ -118,23 +129,21 @@ fn attach_pid(pid: i32) -> Result<Pid> {
 }
 
 fn launch_file(name: &Path, _args: Vec<String>) -> Result<Pid> {
-    match unsafe { fork() } {
-        Ok(ForkResult::Parent { child }) => {
-            waitpid(child, None)?;
+    match unsafe { fork()? } {
+        ForkResult::Parent { child } => {
             Ok(child)
         }
-        Ok(ForkResult::Child) => {
+        ForkResult::Child => {
             // set the child as tracable
             ptrace::traceme()?;
 
             let filename = CString::new(name.as_os_str().as_bytes())?;
             let cstr_args: Vec<&CStr> = vec![];
 
-            execvp(filename.as_c_str(), &cstr_args)?;
+            let _ = execvp(filename.as_c_str(), &cstr_args);
 
-            // return _some_ PID-looking thing ...
+            // "return" some PID-looking thing to make the compiler happy
             Ok(Pid::from_raw(0))
         }
-        Err(e) => Err(anyhow!(e)),
     }
 }
