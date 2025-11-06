@@ -1,7 +1,7 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use nix::sys::ptrace;
-use nix::sys::signal::{kill, Signal};
-use nix::sys::wait::{waitpid, WaitStatus};
+use nix::sys::signal::{Signal, kill};
+use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::{ForkResult, Pid, execvp, fork};
 use std::ffi::{CStr, CString};
 use std::os::unix::ffi::OsStrExt;
@@ -44,9 +44,7 @@ impl Process {
             },
             LaunchType::Name { name } => Process {
                 cli_options: Options {
-                    launch_type: LaunchType::Name {
-                        name,
-                    },
+                    launch_type: LaunchType::Name { name },
                     history_file: cli_options.history_file.clone(),
                 },
                 pid: None,
@@ -73,7 +71,7 @@ impl Process {
         if !matches!(self.state, ProcessState::Stopped | ProcessState::Running) {
             return Err(anyhow!("Inferior process not being debugged"));
         }
-        
+
         let pid = self.pid.unwrap();
         ptrace::cont(pid, None)?;
         self.state = ProcessState::Running;
@@ -90,7 +88,7 @@ impl Process {
             WaitStatus::Stopped(_, _) => self.state = ProcessState::Stopped,
             _ => (),
         }
-        
+
         Ok(wait_status)
     }
 
@@ -130,9 +128,7 @@ fn attach_pid(pid: i32) -> Result<Pid> {
 
 fn launch_file(name: &Path, _args: Vec<String>) -> Result<Pid> {
     match unsafe { fork()? } {
-        ForkResult::Parent { child } => {
-            Ok(child)
-        }
+        ForkResult::Parent { child } => Ok(child),
         ForkResult::Child => {
             // set the child as tracable
             ptrace::traceme()?;

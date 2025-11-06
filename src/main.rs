@@ -1,6 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
-use jdb::{debugger::{Debugger, DispatchResult}, options::Options, process::Process};
+use jdb::{
+    debugger::{Debugger, DispatchResult},
+    options::Options,
+    process::Process,
+};
+
+pub enum Mode {
+    Tui,
+    Edit,
+}
 
 fn main() -> Result<()> {
     let options = Options::parse();
@@ -9,31 +18,29 @@ fn main() -> Result<()> {
     let mut debugger = Debugger::new(&options)?;
     let mut process = Process::new(options);
 
-    enum AppState{
-        Running,
-        Stopped,
-    };
-    let mut cur_state = AppState::Stopped;
-    
+    let mut mode = Mode::Edit;
+
+    // init
+
     // start main loop here
     loop {
-        match cur_state{
-            AppState::Running => {
-                // render the tui
-                // render_tui(&state);                
+        match mode {
+            Mode::Tui => {
+                // noop
+                mode = Mode::Edit;
             }
-            AppState::Stopped => {
-//                suspend_tui();                 // disable_raw + leave alt
-
-
-                match debugger.next(&mut process) {
-                    Ok(DispatchResult::Normal) => {},
-                    Ok(DispatchResult::Exit) => {
-                        break;
-                    }
-                    Err(e) => println!("Error: {:?}", e),
-                }                
-            }
+            Mode::Edit => match debugger.next(&mut process) {
+                Ok(DispatchResult::Normal) => {
+                    // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
+                }
+                Ok(DispatchResult::Exit) => {
+                    break;
+                }
+                Ok(DispatchResult::SwitchToTui) => {
+                    mode = Mode::Tui;
+                }
+                Err(e) => println!("Error: {:?}", e),
+            },
         }
     }
 
