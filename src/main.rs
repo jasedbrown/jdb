@@ -4,6 +4,7 @@ use jdb::{
     debugger::{Debugger, DispatchResult},
     options::Options,
     process::Process,
+    tui::{EventResult, Tui},
 };
 
 pub enum Mode {
@@ -17,17 +18,32 @@ fn main() -> Result<()> {
 
     let mut debugger = Debugger::new(&options)?;
     let mut process = Process::new(options);
+    let mut tui = Tui::new()?;
 
-    let mut mode = Mode::Edit;
-
-    // init
+    let mut mode = Mode::Tui;
 
     // start main loop here
     loop {
+        // i *think* we want to render on every loop iteration ???
+        tui.render(&debugger)?;
         match mode {
             Mode::Tui => {
-                // noop
-                mode = Mode::Edit;
+                match tui.await_event() {
+                    Ok(EventResult::Normal) => {
+                        // ???
+                    }
+                    Ok(EventResult::FocusOnEditor) => {
+                        // tui.suspend_tui()?;
+                        mode = Mode::Edit;
+                    }
+                    Ok(EventResult::Quit) => {
+                        // If i actually allow this from the TUI, need to stop debugger/inferior process
+                        break;
+                    }
+                    Err(e) => {
+                        println!("Error: {:?}", e);
+                    }
+                }
             }
             Mode::Edit => match debugger.next(&mut process) {
                 Ok(DispatchResult::Normal) => {
@@ -37,6 +53,7 @@ fn main() -> Result<()> {
                     break;
                 }
                 Ok(DispatchResult::SwitchToTui) => {
+                    // tui.resume_tui()?;
                     mode = Mode::Tui;
                 }
                 Err(e) => println!("Error: {:?}", e),
@@ -44,5 +61,6 @@ fn main() -> Result<()> {
         }
     }
 
+    tui.exit()?;
     Ok(())
 }

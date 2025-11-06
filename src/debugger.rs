@@ -55,30 +55,32 @@ impl Debugger {
                     // is press the Enter key (for the last command), we will probably
                     // quit as the history will get the last recorded entry *from the file*
                     // not memory :shrug:
-                    match self.line_reader.history().get(0, SearchDirection::Reverse)? {
+                    match self
+                        .line_reader
+                        .history()
+                        .get(0, SearchDirection::Reverse)?
+                    {
                         Some(l) => line = l.entry.into_owned(),
                         None => return Ok(DispatchResult::Normal),
                     }
                 }
                 println!("next line: {:?}", &line);
-                
+
                 let _ = self.line_reader.add_history_entry(line.as_str());
-                
+
                 let cmd = Command::try_from(line)?;
                 let result = self.dispatch_command(cmd, process)?;
 
                 self.line_reader.append_history(&self.history_file)?;
                 Ok(result)
-            },
+            }
             Err(e) => match e {
                 // Note: I'm not completely thrilled that I'm overloading the Interrupted event
                 // from the editor to switch to TUI mode as C-c could be interrupting something else,
                 // but this will suffice for now...
-                ReadlineError::Interrupted => {
-                    Ok(DispatchResult::SwitchToTui)
-                }
-                _ => Err(anyhow!(e))
-            }
+                ReadlineError::Interrupted => Ok(DispatchResult::SwitchToTui),
+                _ => Err(anyhow!(e)),
+            },
         }
     }
 
