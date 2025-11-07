@@ -21,11 +21,9 @@ fn main() -> Result<()> {
     let mut tui = Tui::new()?;
 
     let mut mode = Mode::Tui;
-
-    // start main loop here
     loop {
         // i *think* we want to render on every loop iteration ???
-        tui.render(&debugger)?;
+        tui.render(&debugger, &process)?;
         match mode {
             Mode::Tui => {
                 match tui.await_event() {

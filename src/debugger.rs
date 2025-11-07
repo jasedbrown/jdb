@@ -111,6 +111,10 @@ impl Debugger {
 
         Ok(res)
     }
+
+    pub fn is_debugging(&self) -> bool {
+        self.debugging
+    }
 }
 
 fn resolve_history_file(history_file: &Option<PathBuf>) -> Result<PathBuf> {
