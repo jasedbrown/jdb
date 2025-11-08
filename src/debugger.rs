@@ -1,10 +1,6 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
-use rustyline::config::BellStyle;
-use rustyline::error::ReadlineError;
-use rustyline::history::{History, SearchDirection};
-use rustyline::{Cmd, Config, DefaultEditor, EventHandler, KeyCode, KeyEvent, Modifiers};
 
 use crate::options::Options;
 use crate::process::Process;
@@ -12,7 +8,6 @@ use crate::process::Process;
 const HISTORY_FILE: &str = "~/.cache/jdb/history";
 
 pub struct Debugger {
-    line_reader: DefaultEditor,
     /// Flag if the program is currently being debugged.
     debugging: bool,
     /// Resolved (absolute) path to the history file.
@@ -21,67 +16,56 @@ pub struct Debugger {
 
 impl Debugger {
     pub fn new(cli_options: &Options) -> Result<Debugger> {
-        let config = Config::builder()
-            .edit_mode(rustyline::EditMode::Emacs)
-            .max_history_size(10000)?
-            .history_ignore_dups(true)?
-            .bell_style(BellStyle::None)
-            .tab_stop(4)
-            .build();
-        let mut line_reader = DefaultEditor::with_config(config)?;
+        // let config = Config::builder()
+        //     .edit_mode(rustyline::EditMode::Emacs)
+        //     .max_history_size(10000)?
+        //     .history_ignore_dups(true)?
+        //     .bell_style(BellStyle::None)
+        //     .tab_stop(4)
+        //     .build();
+        // let mut line_reader = DefaultEditor::with_config(config)?;
 
-        line_reader.bind_sequence(
-            KeyEvent(KeyCode::Char('e'), Modifiers::ALT),
-            EventHandler::Simple(Cmd::Interrupt),
-        );
+        // line_reader.bind_sequence(
+        //     KeyEvent(KeyCode::Char('e'), Modifiers::ALT),
+        //     EventHandler::Simple(Cmd::Interrupt),
+        // );
 
         let history_file = resolve_history_file(&cli_options.history_file)?;
-        let _ = line_reader.load_history(&history_file);
+        // let _ = line_reader.load_history(&history_file);
 
         Ok(Debugger {
-            line_reader,
             debugging: false,
             history_file,
         })
     }
 
-    pub fn next(&mut self, process: &mut Process) -> Result<DispatchResult> {
-        match self.line_reader.readline("(jdb) ") {
-            Ok(mut line) => {
-                if line.is_empty() {
-                    println!("empty line");
-                    // execute last command, a la gdb but definitely redraw, as well
-                    // TODO: currently, if the first thing you do after launching hdb
-                    // is press the Enter key (for the last command), we will probably
-                    // quit as the history will get the last recorded entry *from the file*
-                    // not memory :shrug:
-                    match self
-                        .line_reader
-                        .history()
-                        .get(0, SearchDirection::Reverse)?
-                    {
-                        Some(l) => line = l.entry.into_owned(),
-                        None => return Ok(DispatchResult::Normal),
-                    }
-                }
-                println!("next line: {:?}", &line);
-
-                let _ = self.line_reader.add_history_entry(line.as_str());
-
-                let cmd = Command::try_from(line)?;
-                let result = self.dispatch_command(cmd, process)?;
-
-                self.line_reader.append_history(&self.history_file)?;
-                Ok(result)
-            }
-            Err(e) => match e {
-                // Note: I'm not completely thrilled that I'm overloading the Interrupted event
-                // from the editor to switch to TUI mode as C-c could be interrupting something else,
-                // but this will suffice for now...
-                ReadlineError::Interrupted => Ok(DispatchResult::SwitchToTui),
-                _ => Err(anyhow!(e)),
-            },
+    pub fn next(&mut self, command: String, process: &mut Process) -> Result<DispatchResult> {
+        let command = command;
+        if command.is_empty() {
+            println!("empty line");
+            // execute last command, a la gdb but definitely redraw, as well
+            // TODO: currently, if the first thing you do after launching hdb
+            // is press the Enter key (for the last command), we will probably
+            // quit as the history will get the last recorded entry *from the file*
+            // not memory :shrug:
+            // match self
+            //     .line_reader
+            //     .history()
+            //     .get(0, SearchDirection::Reverse)?
+            // {
+            //     Some(l) => line = l.entry.into_owned(),
+            //     None => return Ok(DispatchResult::Normal),
+            // }
         }
+        println!("next line: {:?}", &command);
+
+        // let _ = self.line_reader.add_history_entry(line.as_str());
+
+        let cmd = Command::try_from(command)?;
+        let result = self.dispatch_command(cmd, process)?;
+
+        // self.line_reader.append_history(&self.history_file)?;
+        Ok(result)
     }
 
     fn dispatch_command(
@@ -103,9 +87,6 @@ impl Debugger {
                 process.destroy()?;
                 self.debugging = false;
                 res = DispatchResult::Exit;
-            }
-            Command::SwitchToTui => {
-                res = DispatchResult::SwitchToTui;
             }
         }
 
@@ -136,7 +117,6 @@ fn resolve_history_file(history_file: &Option<PathBuf>) -> Result<PathBuf> {
 pub enum DispatchResult {
     Normal,
     Exit,
-    SwitchToTui,
 }
 
 #[derive(Clone, Debug)]
@@ -146,8 +126,6 @@ pub enum Command {
     Continue,
     /// Exit the debugger (and kill inferior process if it was launched).
     Quit,
-    /// Switch to TUI mode for UI navigation.
-    SwitchToTui,
 }
 
 impl TryFrom<String> for Command {

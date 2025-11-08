@@ -1,24 +1,22 @@
 use anyhow::{Result, anyhow};
 use ratatui::{
-    Frame, Terminal,
+    Terminal,
     crossterm::{
         self,
         event::{Event, KeyCode, KeyEvent, KeyEventKind},
         execute,
         terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
-    layout::{Constraint, Direction, Layout},
     prelude::CrosstermBackend,
-    style::{Color, Style, Stylize},
-    symbols::border,
-    text::Line,
-    widgets::{Block, Borders, Paragraph, Widget},
 };
 use std::io;
 
-use crate::{debugger::Debugger, process::Process};
+use crate::{debugger::Debugger, process::Process, tui::render::render_inner};
+
+mod render;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[allow(dead_code)]
 enum DebuggerPane {
     Assembly,
     Breakpoints,
@@ -67,23 +65,21 @@ impl Default for TuiState {
 }
 
 impl TuiState {
-    fn is_focus(&self, pane: &DebuggerPane) -> Result<bool> {
-        let focus = match self.panes.get(self.focus_pane_idx) {
-            Some(p) => p,
-            None => {
-                return Err(anyhow!("Array index {} out of bounds {}", self.focus_pane_idx, self.panes.len()));
-            }
-        };
-        Ok(focus == pane)
+    fn is_focus(&self, pane: &DebuggerPane) -> bool {
+        let focus = self.panes.get(self.focus_pane_idx).expect(
+            format!(
+                "Array index {} out of bounds {}",
+                self.focus_pane_idx,
+                self.panes.len()
+            )
+            .as_str(),
+        );
+        focus == pane
     }
 
     fn focus_next_pane(&mut self, forward: bool) -> DebuggerPane {
         let idx = if forward {
-            let mut i = self.focus_pane_idx + 1;
-            if i >= self.panes.len() {
-                i = 0;
-            }
-            i
+            (self.focus_pane_idx + 1) % self.panes.len()
         } else if self.focus_pane_idx == 0 {
             self.panes.len() - 1
         } else {
@@ -102,7 +98,7 @@ pub struct Tui {
 
 pub enum EventResult {
     Normal,
-    FocusOnEditor,
+    Editor { command: String },
     Quit,
 }
 
@@ -129,32 +125,11 @@ impl Tui {
         Ok(())
     }
 
-    /// Used right before running editor
-    #[allow(dead_code)]
-    fn suspend_tui() -> Result<()> {
-        disable_raw_mode()?;
-        execute!(io::stdout(), LeaveAlternateScreen)?;
-        Ok(())
-    }
-
-    /// Used right after switching from editor
-    #[allow(dead_code)]
-    fn resume_tui() -> Result<()> {
-        enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen)?;
-        Ok(())
-    }
-
     /// Render the TUI
     pub fn render(&mut self, debugger: &Debugger, process: &Process) -> Result<()> {
         match self
             .terminal
-            .try_draw(|frame| {
-                match render_inner(&self.state, debugger, process, frame) {
-                    Ok(w) => Ok(w),
-                    Err(e) => Err(io::Error::other(e)),
-                }
-            })
+            .draw(|frame| render_inner(&self.state, debugger, process, frame))
         {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow!(e)),
@@ -188,104 +163,35 @@ impl Tui {
         unreachable!("Should have found pane type {:?} in current panes", pane);
     }
 
-    fn handle_tab(&mut self, forward: bool) -> Result<EventResult> {
+    fn handle_tab(&mut self, forward: bool) {
         let next_pane = self.state.focus_next_pane(forward);
         self.set_focus(&next_pane);
-        let result = if matches!(next_pane, DebuggerPane::Command) {
-            EventResult::FocusOnEditor                    
-        } else {
-            EventResult::Normal
-        };
-
-        Ok(result)
     }
-    
+
     fn handle_key_press(&mut self, key: KeyEvent) -> Result<EventResult> {
         let mut ret_code = EventResult::Normal;
         match key.code {
             KeyCode::Char(c) => match c {
                 'c' | 'e' => {
                     self.set_focus(&DebuggerPane::Command);
-                    ret_code = EventResult::FocusOnEditor;
                 }
                 's' => {
                     self.set_focus(&DebuggerPane::Source);
-                    ret_code = EventResult::Normal;
                 }
                 'l' => {
                     self.set_focus(&DebuggerPane::Locals);
-                    ret_code = EventResult::Normal;
                 }
                 'o' => {
                     self.set_focus(&DebuggerPane::Logs);
-                    ret_code = EventResult::Normal;
                 }
                 'q' => ret_code = EventResult::Quit,
-                _ => {},
+                _ => {}
             },
-            KeyCode::Tab => ret_code = self.handle_tab(true)?,
-            KeyCode::BackTab => ret_code = self.handle_tab(false)?,
-            _ => {},
+            KeyCode::Tab => self.handle_tab(true),
+            KeyCode::BackTab => self.handle_tab(false),
+            _ => {}
         };
 
         Ok(ret_code)
     }
-}
-
-fn build_pane(pane: &DebuggerPane, state: &TuiState) -> Result<impl Widget> {
-    let is_focus = state.is_focus(pane)?;
-    let mut style = Style::default();
-    if is_focus {
-        style = style.bold().blue();
-    }
-    let title = Line::from(format!(" {} ", pane.display_name())).style(style);
-
-    let mut block = Block::default()
-        .borders(Borders::ALL)
-        .title(title.left_aligned());
-    if is_focus {
-        block = block.border_set(border::DOUBLE).blue();
-    }
-
-    let widget = Paragraph::new("...")
-        .style(Style::default().fg(Color::Green))
-        .block(block);
-
-    Ok(widget)
-}
-
-fn render_inner(state: &TuiState, _debugger: &Debugger, _process: &Process, frame: &mut Frame) -> Result<()> {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(frame.area());
-
-    ///////////////////////////////
-    // build top chunk (source and variable panes ...)
-    let top_pane_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
-        .split(chunks[0]);
-
-    // source pane
-    let source_pane = build_pane(&DebuggerPane::Source, state)?;
-    frame.render_widget(source_pane, top_pane_chunks[0]);
-    // pane with locals / other ...
-    let others_pane = build_pane(&DebuggerPane::Locals, state)?;
-    frame.render_widget(others_pane, top_pane_chunks[1]);
-
-    /////////////////////////////
-    // build bottom chunk (command and stdout panes ...)
-    let bottom_pane_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-        .split(chunks[1]);
-    // command pane
-    let command_pane = build_pane(&DebuggerPane::Command, state)?;
-    frame.render_widget(command_pane, bottom_pane_chunks[0]);
-    // logs/stdout pane
-    let output_pane = build_pane(&DebuggerPane::Logs, state)?;
-    frame.render_widget(output_pane, bottom_pane_chunks[1]);
-
-    Ok(())
 }

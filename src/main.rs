@@ -7,11 +7,6 @@ use jdb::{
     tui::{EventResult, Tui},
 };
 
-pub enum Mode {
-    Tui,
-    Edit,
-}
-
 fn main() -> Result<()> {
     let options = Options::parse();
     options.validate()?;
@@ -20,42 +15,31 @@ fn main() -> Result<()> {
     let mut process = Process::new(options);
     let mut tui = Tui::new()?;
 
-    let mut mode = Mode::Tui;
     loop {
         // i *think* we want to render on every loop iteration ???
         tui.render(&debugger, &process)?;
-        match mode {
-            Mode::Tui => {
-                match tui.await_event() {
-                    Ok(EventResult::Normal) => {
-                        // ???
+        match tui.await_event() {
+            Ok(EventResult::Normal) => {
+                // nop?
+            }
+            Ok(EventResult::Editor { command }) => {
+                match debugger.next(command, &mut process) {
+                    Ok(DispatchResult::Normal) => {
+                        // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
                     }
-                    Ok(EventResult::FocusOnEditor) => {
-                        // tui.suspend_tui()?;
-                        mode = Mode::Edit;
-                    }
-                    Ok(EventResult::Quit) => {
-                        // If i actually allow this from the TUI, need to stop debugger/inferior process
+                    Ok(DispatchResult::Exit) => {
                         break;
                     }
-                    Err(e) => {
-                        println!("Error: {:?}", e);
-                    }
+                    Err(e) => println!("Error: {:?}", e),
                 }
             }
-            Mode::Edit => match debugger.next(&mut process) {
-                Ok(DispatchResult::Normal) => {
-                    // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
-                }
-                Ok(DispatchResult::Exit) => {
-                    break;
-                }
-                Ok(DispatchResult::SwitchToTui) => {
-                    // tui.resume_tui()?;
-                    mode = Mode::Tui;
-                }
-                Err(e) => println!("Error: {:?}", e),
-            },
+            Ok(EventResult::Quit) => {
+                // If i actually allow this from the TUI, need to stop debugger/inferior process
+                break;
+            }
+            Err(e) => {
+                println!("Error: {:?}", e);
+            }
         }
     }
 
