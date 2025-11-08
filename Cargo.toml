@@ -7,6 +7,11 @@ edition = "2024"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 dirs = "6.0"
+log = "0.4"
 nix = { version = "0.30", features = ["ptrace", "signal"] }
 ratatui = "0.29"
+tracing = "0.1.41"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tui-logger = { version = "0.17", features = ["tracing-support"] }
 tui-textarea = { version = "0.7", features = ["search"] }

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
+use tracing::trace;
 
 use crate::options::Options;
 use crate::process::Process;
@@ -42,7 +43,7 @@ impl Debugger {
     pub fn next(&mut self, command: String, process: &mut Process) -> Result<DispatchResult> {
         let command = command;
         if command.is_empty() {
-            println!("empty line");
+            trace!("next editor command is empty line, will replay last command");
             // execute last command, a la gdb but definitely redraw, as well
             // TODO: currently, if the first thing you do after launching hdb
             // is press the Enter key (for the last command), we will probably
@@ -57,7 +58,6 @@ impl Debugger {
             //     None => return Ok(DispatchResult::Normal),
             // }
         }
-        println!("next line: {:?}", &command);
 
         // let _ = self.line_reader.add_history_entry(line.as_str());
 

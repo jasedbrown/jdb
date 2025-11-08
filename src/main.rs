@@ -6,23 +6,59 @@ use jdb::{
     process::Process,
     tui::{EventResult, Tui},
 };
+use tracing::{error, trace};
+use tracing_appender::non_blocking;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::fmt;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use std::io;
+
+fn init_logging() -> Result<WorkerGuard> {
+    // Layer 1: send tracing events to tui-logger’s widget
+    tui_logger::init_logger(log::LevelFilter::Trace).unwrap();
+    tui_logger::set_default_level(log::LevelFilter::Trace);
+    let tui_layer = tui_logger::TuiTracingSubscriberLayer;
+
+    // Layer 2: send tracing events to file appender
+    let file_appender = tracing_appender::rolling::never("logs", "app.log");
+    let (file_writer, guard) = non_blocking(file_appender);
+    let stdout_layer = fmt::layer()
+        .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
+        .with_ansi(false) // files usually without ANSI
+        .with_writer(file_writer);
+    // Compose layers into a single subscriber and install it.
+    tracing_subscriber::registry()
+        .with(stdout_layer)
+        .with(tui_layer)
+        .init();
+
+    // If you use the non-blocking file writer, return the guard to keep it alive.
+    // For pure stdout logging, you can just create a dummy guard:
+    let (_dummy_writer, guard) = non_blocking(io::stdout());
+    Ok(guard)
+}
 
 fn main() -> Result<()> {
     let options = Options::parse();
     options.validate()?;
+
+    let _guard = init_logging()?;
 
     let mut debugger = Debugger::new(&options)?;
     let mut process = Process::new(options);
     let mut tui = Tui::new()?;
 
     loop {
-        // i *think* we want to render on every loop iteration ???
         tui.render(&debugger, &process)?;
         match tui.await_event() {
             Ok(EventResult::Normal) => {
                 // nop?
             }
             Ok(EventResult::Editor { command }) => {
+                trace!(?command, "next editor command");
                 match debugger.next(command, &mut process) {
                     Ok(DispatchResult::Normal) => {
                         // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
@@ -30,7 +66,7 @@ fn main() -> Result<()> {
                     Ok(DispatchResult::Exit) => {
                         break;
                     }
-                    Err(e) => println!("Error: {:?}", e),
+                    Err(e) => error!("Error: {:?}", e),
                 }
             }
             Ok(EventResult::Quit) => {
@@ -38,7 +74,7 @@ fn main() -> Result<()> {
                 break;
             }
             Err(e) => {
-                println!("Error: {:?}", e);
+                error!(error = ?e, "Error");
             }
         }
     }
