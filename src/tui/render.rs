@@ -1,5 +1,14 @@
+use log::LevelFilter;
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect}, style::{Color, Style, Stylize}, symbols::border, text::{Line, Span}, widgets::{Block, Borders, Paragraph, Tabs, Widget}, Frame
+    Frame,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style, Stylize},
+    symbols::border,
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, Paragraph, Tabs, Widget},
+};
+use tui_logger::{
+    LogFormatter, TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiLoggerWidget, TuiWidgetState,
 };
 use tui_textarea::TextArea;
 
@@ -104,13 +113,77 @@ fn render_debugger_screen(
     frame.render_widget(output_pane, bottom_pane_chunks[1]);
 }
 
-fn render_logging_screen(
-    _state: &DebuggerLogScreenState,
-    _debugger: &Debugger,
-    _process: &Process,
-    _frame: &mut Frame,
-    _rect: Rect,
-) {
+fn render_logging_screen(state: &DebuggerLogScreenState, frame: &mut Frame, rect: Rect) {
+    // this implementation is based on the example in tui-looger:
+    // https://github.com/gin66/tui-logger/blob/master/examples/demo.rs
+    let [smart_area, main_area, help_area] = Layout::vertical([
+        Constraint::Fill(50),
+        Constraint::Fill(30),
+        Constraint::Length(3),
+    ])
+    .areas(rect);
+
+    // show two TuiWidgetState side-by-side
+    let [left, right] = Layout::horizontal([Constraint::Fill(1); 2]).areas(main_area);
+
+    TuiLoggerSmartWidget::default()
+        .style_error(Style::default().fg(Color::Red))
+        .style_debug(Style::default().fg(Color::Green))
+        .style_warn(Style::default().fg(Color::Yellow))
+        .style_trace(Style::default().fg(Color::Magenta))
+        .style_info(Style::default().fg(Color::Cyan))
+        .output_separator(':')
+        .output_timestamp(Some("%H:%M:%S".to_string()))
+        .output_level(Some(TuiLoggerLevelOutput::Abbreviated))
+        .output_target(true)
+        .output_file(true)
+        .output_line(true)
+        .state(state.current_state())
+        .render(smart_area, frame.buffer_mut());
+
+    // An example of filtering the log output. The left TuiLoggerWidget is filtered to only show
+    // log entries for the "App" target. The right TuiLoggerWidget shows all log entries.
+    let filter_state = TuiWidgetState::new()
+        .set_default_display_level(LevelFilter::Off)
+        .set_level_for_target("App", LevelFilter::Debug)
+        .set_level_for_target("background-task", LevelFilter::Info);
+    let formatter: Option<Box<dyn LogFormatter>> = None;
+    // if cfg!(feature = "formatter") {
+    //     formatter = Some(Box::new(MyLogFormatter {}));
+    // }
+
+    TuiLoggerWidget::default()
+        .block(Block::bordered().title("Filtered TuiLoggerWidget"))
+        .output_separator('|')
+        .output_timestamp(Some("%F %H:%M:%S%.3f".to_string()))
+        .output_level(Some(TuiLoggerLevelOutput::Long))
+        .output_target(false)
+        .output_file(false)
+        .output_line(false)
+        .style(Style::default().fg(Color::White))
+        .state(&filter_state)
+        .render(left, frame.buffer_mut());
+
+    TuiLoggerWidget::default()
+        .block(Block::bordered().title("Unfiltered TuiLoggerWidget"))
+        .opt_formatter(formatter)
+        .output_separator('|')
+        .output_timestamp(Some("%F %H:%M:%S%.3f".to_string()))
+        .output_level(Some(TuiLoggerLevelOutput::Long))
+        .output_target(false)
+        .output_file(false)
+        .output_line(false)
+        .style(Style::default().fg(Color::White))
+        .render(right, frame.buffer_mut());
+
+    Text::from(vec![
+        "Q: Quit | Tab: Switch state | ↑/↓: Select target | f: Focus target".into(),
+        "←/→: Display level | +/-: Filter level | Space: Toggle hidden targets".into(),
+        "h: Hide target selector | PageUp/Down: Scroll | Esc: Cancel scroll".into(),
+    ])
+    .style(Color::Gray)
+    .centered()
+    .render(help_area, frame.buffer_mut());
 }
 
 fn render_header(screen_mode: ScreenMode, frame: &mut Frame, rect: Rect) {
@@ -120,7 +193,7 @@ fn render_header(screen_mode: ScreenMode, frame: &mut Frame, rect: Rect) {
         ScreenMode::MainDebugger => 0,
         ScreenMode::DebuggerLogging => 1,
     };
-    
+
     let tabs = screens
         .iter()
         .map(|t| Line::from(Span::styled(*t, Style::default().fg(Color::Green))))
@@ -145,7 +218,7 @@ pub fn render_screen(state: &TuiState, debugger: &Debugger, process: &Process, f
             render_debugger_screen(&state.debugger_state, debugger, process, frame, chunks[1])
         }
         ScreenMode::DebuggerLogging => {
-            render_logging_screen(&state.logging_state, debugger, process, frame, chunks[1])
+            render_logging_screen(&state.logging_state, frame, chunks[1])
         }
     }
 }

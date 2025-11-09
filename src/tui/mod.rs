@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use log::LevelFilter;
 use ratatui::{
     Terminal,
     crossterm::{
@@ -11,6 +12,7 @@ use ratatui::{
 };
 use std::io;
 use tracing::trace;
+use tui_logger::{TuiWidgetEvent, TuiWidgetState};
 use tui_textarea::TextArea;
 
 use crate::{debugger::Debugger, process::Process, tui::render::render_screen};
@@ -119,15 +121,54 @@ impl DebuggerState {
     }
 }
 
-#[derive(Debug, Default)]
 pub struct DebuggerLogScreenState {
-    // tui_logger ??? not sure if i need a long-lived reference
+    states: Vec<TuiWidgetState>,
     current_pane_idx: usize,
+}
+
+impl Default for DebuggerLogScreenState {
+    fn default() -> Self {
+        // assume 4 widget panes in the debug logging screen, a la the tuii-logger example
+        let states = vec![
+            TuiWidgetState::new().set_default_display_level(LevelFilter::Info),
+            TuiWidgetState::new().set_default_display_level(LevelFilter::Info),
+            TuiWidgetState::new().set_default_display_level(LevelFilter::Info),
+            TuiWidgetState::new().set_default_display_level(LevelFilter::Info),
+        ];
+
+        Self {
+            states,
+            current_pane_idx: 0,
+        }
+    }
 }
 
 impl DebuggerLogScreenState {
     pub fn focus_next_pane(&mut self, forward: bool) {
-        self.current_pane_idx = next_index(2, self.current_pane_idx, forward);
+        self.current_pane_idx = next_index(self.states.len(), self.current_pane_idx, forward);
+    }
+
+    fn transition(&mut self, event: TuiWidgetEvent) {
+        let widget_state = self.states.get(self.current_pane_idx).expect(
+            format!(
+                "Array index {} out of bounds {}",
+                self.current_pane_idx,
+                self.states.len()
+            )
+            .as_str(),
+        );
+        widget_state.transition(event);
+    }
+
+    pub fn current_state(&self) -> &TuiWidgetState {
+        self.states.get(self.current_pane_idx).expect(
+            format!(
+                "Array index {} out of bounds {}",
+                self.current_pane_idx,
+                self.states.len()
+            )
+            .as_str(),
+        )
     }
 }
 
@@ -141,7 +182,6 @@ pub enum ScreenMode {
 }
 
 /// The central nexus of state of the various screens for the TUI.
-#[derive(Debug)]
 struct TuiState {
     debugger_state: DebuggerState,
     logging_state: DebuggerLogScreenState,
@@ -239,7 +279,10 @@ impl Tui {
     }
 
     fn handle_key_press(&mut self, key: KeyEvent) -> Result<EventResult> {
-        // let mut ret_code = EventResult::Normal;
+        // only bother iterpreting key presses; release/repeat do not interest me
+        if !matches!(key.kind, KeyEventKind::Press) {
+            return Ok(EventResult::Normal);
+        }
 
         // handle Fn keys before everything as that will switch screens
         if let KeyCode::F(fkey_num) = key.code {
@@ -302,9 +345,33 @@ fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result
 }
 
 fn logging_screen_key_press(
-    _state: &mut DebuggerLogScreenState,
-    _key: KeyEvent,
+    state: &mut DebuggerLogScreenState,
+    key: KeyEvent,
 ) -> Result<EventResult> {
-    let ret_code = EventResult::Normal;
+    trace!(?key, "Debug log screen key event");
+    let mut ret_code = EventResult::Normal;
+    match key.code {
+        KeyCode::Char(c) => match c {
+            // this is a development-time only, semi-sneaky back door to quit the debugger
+            // if i've fucked up somehow ...
+            'q' => ret_code = EventResult::Quit,
+            ' ' => state.transition(TuiWidgetEvent::SpaceKey),
+            '+' => state.transition(TuiWidgetEvent::PlusKey),
+            '-' => state.transition(TuiWidgetEvent::MinusKey),
+            'h' => state.transition(TuiWidgetEvent::HideKey),
+            'f' => state.transition(TuiWidgetEvent::FocusKey),
+            _ => {}
+        },
+        KeyCode::Tab => state.focus_next_pane(true),
+        KeyCode::BackTab => state.focus_next_pane(false),
+        KeyCode::Esc => state.transition(TuiWidgetEvent::EscapeKey),
+        KeyCode::PageUp => state.transition(TuiWidgetEvent::PrevPageKey),
+        KeyCode::PageDown => state.transition(TuiWidgetEvent::NextPageKey),
+        KeyCode::Up => state.transition(TuiWidgetEvent::UpKey),
+        KeyCode::Down => state.transition(TuiWidgetEvent::DownKey),
+        KeyCode::Left => state.transition(TuiWidgetEvent::LeftKey),
+        KeyCode::Right => state.transition(TuiWidgetEvent::RightKey),
+        _ => {}
+    }
     Ok(ret_code)
 }
