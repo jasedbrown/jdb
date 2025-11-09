@@ -12,7 +12,7 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use std::io;
+use std::fs;
 
 fn init_logging() -> Result<WorkerGuard> {
     // Layer 1: send tracing events to tui-logger’s widget
@@ -21,6 +21,8 @@ fn init_logging() -> Result<WorkerGuard> {
     let tui_layer = tui_logger::TuiTracingSubscriberLayer;
 
     // Layer 2: send tracing events to file appender
+    // ensure log dir exists
+    fs::create_dir_all("logs")?;
     let file_appender = tracing_appender::rolling::never("logs", "app.log");
     let (file_writer, guard) = non_blocking(file_appender);
     let stdout_layer = fmt::layer()
@@ -29,15 +31,12 @@ fn init_logging() -> Result<WorkerGuard> {
         .with_line_number(true)
         .with_ansi(false) // files usually without ANSI
         .with_writer(file_writer);
-    // Compose layers into a single subscriber and install it.
+
     tracing_subscriber::registry()
         .with(stdout_layer)
         .with(tui_layer)
         .init();
 
-    // If you use the non-blocking file writer, return the guard to keep it alive.
-    // For pure stdout logging, you can just create a dummy guard:
-    let (_dummy_writer, guard) = non_blocking(io::stdout());
     Ok(guard)
 }
 

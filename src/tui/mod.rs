@@ -3,21 +3,33 @@ use ratatui::{
     Terminal,
     crossterm::{
         self,
-        event::{Event, KeyCode, KeyEvent, KeyEventKind},
+        event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
         execute,
         terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
     },
     prelude::CrosstermBackend,
 };
 use std::io;
+use tracing::trace;
+use tui_textarea::TextArea;
 
-use crate::{debugger::Debugger, process::Process, tui::render::render_inner};
+use crate::{debugger::Debugger, process::Process, tui::render::render_screen};
 
 mod render;
 
+fn next_index(len: usize, cur_idx: usize, increment: bool) -> usize {
+    if increment {
+        (cur_idx + 1) % len
+    } else if cur_idx == 0 {
+        len - 1
+    } else {
+        cur_idx - 1
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[allow(dead_code)]
-enum DebuggerPane {
+pub enum DebuggerPane {
     Assembly,
     Breakpoints,
     Command,
@@ -44,12 +56,19 @@ impl DebuggerPane {
 }
 
 #[derive(Debug)]
-struct TuiState {
+pub struct DebuggerState {
+    /// The current panes in the TUI
     panes: Vec<DebuggerPane>,
+    /// The currently focued pane.
     focus_pane_idx: usize,
+    /// The command editor. Since this is a stateful `Widget`, as well as being
+    /// the most important Widget in this damn debugger, we keep a long-lived
+    /// instance here.
+    // TODO: the static lifetime might be wrong/bullshit ...
+    editor: TextArea<'static>,
 }
 
-impl Default for TuiState {
+impl Default for DebuggerState {
     fn default() -> Self {
         let panes = vec![
             DebuggerPane::Source,
@@ -57,15 +76,19 @@ impl Default for TuiState {
             DebuggerPane::Command,
             DebuggerPane::Logs,
         ];
-        TuiState {
+
+        let textarea = TextArea::default();
+
+        DebuggerState {
             panes,
             focus_pane_idx: 0,
+            editor: textarea,
         }
     }
 }
 
-impl TuiState {
-    fn is_focus(&self, pane: &DebuggerPane) -> bool {
+impl DebuggerState {
+    pub fn is_focus(&self, pane: &DebuggerPane) -> bool {
         let focus = self.panes.get(self.focus_pane_idx).expect(
             format!(
                 "Array index {} out of bounds {}",
@@ -77,17 +100,63 @@ impl TuiState {
         focus == pane
     }
 
-    fn focus_next_pane(&mut self, forward: bool) -> DebuggerPane {
-        let idx = if forward {
-            (self.focus_pane_idx + 1) % self.panes.len()
-        } else if self.focus_pane_idx == 0 {
-            self.panes.len() - 1
-        } else {
-            self.focus_pane_idx - 1
-        };
-        self.focus_pane_idx = idx;
+    pub fn focus_next_pane(&mut self, forward: bool) {
+        self.focus_pane_idx = next_index(self.panes.len(), self.focus_pane_idx, forward);
+    }
 
-        *self.panes.get(self.focus_pane_idx).unwrap()
+    fn set_focus(&mut self, pane: &DebuggerPane) {
+        for (i, p) in self.panes.iter().enumerate() {
+            if p == pane {
+                self.focus_pane_idx = i;
+                return;
+            }
+        }
+        unreachable!("Should have found pane type {:?} in current panes", pane);
+    }
+
+    fn in_edit_mode(&self) -> bool {
+        self.is_focus(&DebuggerPane::Command)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DebuggerLogScreenState {
+    // tui_logger ??? not sure if i need a long-lived reference
+    current_pane_idx: usize,
+}
+
+impl DebuggerLogScreenState {
+    pub fn focus_next_pane(&mut self, forward: bool) {
+        self.current_pane_idx = next_index(2, self.current_pane_idx, forward);
+    }
+}
+
+/// Enum of the primary screens available in `jdb`
+#[derive(Copy, Clone, Debug)]
+pub enum ScreenMode {
+    /// The primary screen for debugging activities
+    MainDebugger,
+    /// See the logs from `jdb` itself.
+    DebuggerLogging,
+}
+
+/// The central nexus of state of the various screens for the TUI.
+#[derive(Debug)]
+struct TuiState {
+    debugger_state: DebuggerState,
+    logging_state: DebuggerLogScreenState,
+
+    /// The current screen that should be displayed/interacted with.
+    screen_mode: ScreenMode,
+}
+
+impl Default for TuiState {
+    fn default() -> Self {
+        TuiState {
+            debugger_state: Default::default(),
+            logging_state: Default::default(),
+            screen_mode: ScreenMode::MainDebugger,
+        }
     }
 }
 
@@ -129,7 +198,7 @@ impl Tui {
     pub fn render(&mut self, debugger: &Debugger, process: &Process) -> Result<()> {
         match self
             .terminal
-            .draw(|frame| render_inner(&self.state, debugger, process, frame))
+            .draw(|frame| render_screen(&self.state, debugger, process, frame))
         {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow!(e)),
@@ -153,45 +222,89 @@ impl Tui {
         }
     }
 
-    fn set_focus(&mut self, pane: &DebuggerPane) {
-        for (i, p) in self.state.panes.iter().enumerate() {
-            if p == pane {
-                self.state.focus_pane_idx = i;
-                return;
-            }
-        }
-        unreachable!("Should have found pane type {:?} in current panes", pane);
-    }
+    fn handle_function_key(&mut self, fkey_num: u8) -> Result<EventResult> {
+        // TODO: might need to swap/store some additional state. perhaps if we were in
+        // the editor mode, something might need to be stashed (not really sure)??
 
-    fn handle_tab(&mut self, forward: bool) {
-        let next_pane = self.state.focus_next_pane(forward);
-        self.set_focus(&next_pane);
+        let cur_screen = self.state.screen_mode;
+        match fkey_num {
+            1 => self.state.screen_mode = ScreenMode::MainDebugger,
+            2 => self.state.screen_mode = ScreenMode::DebuggerLogging,
+            _ => {} // ignore other keys
+        }
+
+        trace!(prev_screen = ?cur_screen, next_screen = ?self.state.screen_mode, "Changing screen mode");
+
+        Ok(EventResult::Normal)
     }
 
     fn handle_key_press(&mut self, key: KeyEvent) -> Result<EventResult> {
-        let mut ret_code = EventResult::Normal;
+        // let mut ret_code = EventResult::Normal;
+
+        // handle Fn keys before everything as that will switch screens
+        if let KeyCode::F(fkey_num) = key.code {
+            return self.handle_function_key(fkey_num);
+        }
+
+        match self.state.screen_mode {
+            ScreenMode::MainDebugger => {
+                debugger_screen_key_press(&mut self.state.debugger_state, key)
+            }
+            ScreenMode::DebuggerLogging => {
+                logging_screen_key_press(&mut self.state.logging_state, key)
+            }
+        }
+    }
+}
+
+fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result<EventResult> {
+    let mut ret_code = EventResult::Normal;
+
+    if state.in_edit_mode() {
+        // M-e is the magick binding to exit editor mode
+        if key.code == KeyCode::Char('e') && key.modifiers == KeyModifiers::META {
+            state.set_focus(&DebuggerPane::Source);
+        } else {
+            let is_enter = key.code == KeyCode::Enter;
+            assert!(state.editor.input(key));
+
+            if is_enter {
+                let lines = state.editor.lines();
+                let last_line = lines[lines.len() - 1].clone();
+                ret_code = EventResult::Editor { command: last_line };
+            }
+        }
+    } else {
         match key.code {
             KeyCode::Char(c) => match c {
                 'c' | 'e' => {
-                    self.set_focus(&DebuggerPane::Command);
+                    state.set_focus(&DebuggerPane::Command);
                 }
                 's' => {
-                    self.set_focus(&DebuggerPane::Source);
+                    state.set_focus(&DebuggerPane::Source);
                 }
                 'l' => {
-                    self.set_focus(&DebuggerPane::Locals);
+                    state.set_focus(&DebuggerPane::Locals);
                 }
                 'o' => {
-                    self.set_focus(&DebuggerPane::Logs);
+                    state.set_focus(&DebuggerPane::Logs);
                 }
                 'q' => ret_code = EventResult::Quit,
                 _ => {}
             },
-            KeyCode::Tab => self.handle_tab(true),
-            KeyCode::BackTab => self.handle_tab(false),
+            KeyCode::Tab => state.focus_next_pane(true),
+            KeyCode::BackTab => state.focus_next_pane(false),
             _ => {}
-        };
-
-        Ok(ret_code)
+        }
     }
+
+    Ok(ret_code)
+}
+
+fn logging_screen_key_press(
+    _state: &mut DebuggerLogScreenState,
+    _key: KeyEvent,
+) -> Result<EventResult> {
+    let ret_code = EventResult::Normal;
+    Ok(ret_code)
 }
