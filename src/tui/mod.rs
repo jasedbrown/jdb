@@ -75,15 +75,15 @@ impl Default for DebuggerState {
         let panes = vec![
             DebuggerPane::Source,
             DebuggerPane::Locals,
-            DebuggerPane::Command,
             DebuggerPane::Logs,
+            DebuggerPane::Command,
         ];
 
         let textarea = TextArea::default();
 
         DebuggerState {
             panes,
-            focus_pane_idx: 0,
+            focus_pane_idx: 3,
             editor: textarea,
         }
     }
@@ -279,11 +279,6 @@ impl Tui {
     }
 
     fn handle_key_press(&mut self, key: KeyEvent) -> Result<EventResult> {
-        // only bother iterpreting key presses; release/repeat do not interest me
-        if !matches!(key.kind, KeyEventKind::Press) {
-            return Ok(EventResult::Normal);
-        }
-
         // handle Fn keys before everything as that will switch screens
         if let KeyCode::F(fkey_num) = key.code {
             return self.handle_function_key(fkey_num);
@@ -302,24 +297,37 @@ impl Tui {
 
 fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result<EventResult> {
     let mut ret_code = EventResult::Normal;
+    let in_edit_mode = state.in_edit_mode();
+    trace!(?key, ?in_edit_mode, "Debugger screen key press");
 
-    if state.in_edit_mode() {
+    if in_edit_mode {
         // M-e is the magick binding to exit editor mode
-        if key.code == KeyCode::Char('e') && key.modifiers == KeyModifiers::META {
+        if key.code == KeyCode::Char('x') && key.modifiers == KeyModifiers::META {
             state.set_focus(&DebuggerPane::Source);
         } else {
-            let is_enter = key.code == KeyCode::Enter;
-            assert!(state.editor.input(key));
-
-            if is_enter {
+            // grab the current line, in any, before sending the RETURN event
+            if key.code == KeyCode::Enter {
                 let lines = state.editor.lines();
                 let last_line = lines[lines.len() - 1].clone();
+
+                // arguably if the user is just pressing the return key and no input,
+                // don't bother recording the second enter ...
+                if !last_line.is_empty() {
+                    assert!(state.editor.input(key));
+                }
+
                 ret_code = EventResult::Editor { command: last_line };
+            } else {
+                
+                assert!(state.editor.input(key));
             }
         }
     } else {
         match key.code {
             KeyCode::Char(c) => match c {
+                'x' if matches!(key.modifiers, KeyModifiers::META | KeyModifiers::ALT) => {
+                    state.set_focus(&DebuggerPane::Command);
+                },
                 'c' | 'e' => {
                     state.set_focus(&DebuggerPane::Command);
                 }

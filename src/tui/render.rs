@@ -2,7 +2,7 @@ use log::LevelFilter;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Style, Stylize},
     symbols::border,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Tabs, Widget},
@@ -80,17 +80,17 @@ fn render_debugger_screen(
     frame: &mut Frame,
     rect: Rect,
 ) {
-    let chunks = Layout::default()
+    let [src, logs, minibuffer] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
-        .split(rect);
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40), Constraint::Length(3)])
+        .areas(rect);
 
     ///////////////////////////////
     // build top chunk (source and variable panes ...)
     let top_pane_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
-        .split(chunks[0]);
+        .split(src);
 
     // source pane
     let source_pane = build_source_pane(state);
@@ -100,17 +100,25 @@ fn render_debugger_screen(
     frame.render_widget(others_pane, top_pane_chunks[1]);
 
     /////////////////////////////
-    // build bottom chunk (command and stdout panes ...)
+    // build logs chunk (stdout)
     let bottom_pane_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-        .split(chunks[1]);
+        .constraints([Constraint::Percentage(100)])
+        .split(logs);
+    // logs/stdout pane
+    let output_pane = build_output_pane(state);
+    frame.render_widget(output_pane, bottom_pane_chunks[0]);
+
+    /////////////////////////////
+    // build minbuffer (command and echo area)
+    let bottom_pane_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(100)])
+        // .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
+        .split(minibuffer);
     // command pane
     let command_pane = build_editor_pane(state);
     frame.render_widget(&command_pane, bottom_pane_chunks[0]);
-    // logs/stdout pane
-    let output_pane = build_output_pane(state);
-    frame.render_widget(output_pane, bottom_pane_chunks[1]);
 }
 
 fn render_logging_screen(state: &DebuggerLogScreenState, frame: &mut Frame, rect: Rect) {

@@ -8,6 +8,7 @@ use crate::process::Process;
 
 const HISTORY_FILE: &str = "~/.cache/jdb/history";
 
+#[allow(dead_code)]
 pub struct Debugger {
     /// Flag if the program is currently being debugged.
     debugging: bool,
