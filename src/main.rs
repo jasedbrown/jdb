@@ -6,6 +6,7 @@ use jdb::{
     process::Process,
     tui::{EventResult, Tui},
 };
+use ratatui::crossterm::event::KeyEvent;
 use tracing::{error, trace};
 use tracing_appender::non_blocking;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -38,6 +39,12 @@ fn init_logging() -> Result<WorkerGuard> {
         .init();
 
     Ok(guard)
+}
+
+pub enum Event {
+    InferiorLogging(String),
+    TerminalKey(KeyEvent),
+    
 }
 
 fn main() -> Result<()> {

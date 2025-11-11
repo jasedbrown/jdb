@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use crossbeam_channel::{Receiver, Sender}
 use nix::libc;
 use nix::pty::{Winsize, openpty};
 use nix::sys::ptrace;
@@ -9,12 +10,16 @@ use nix::unistd::{
 };
 use std::ffi::{CStr, CString};
 use std::fs::File;
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use std::thread;
 use tracing::trace;
 
 use crate::options::{LaunchType, Options};
+use crate::process::inferior::InferiorProcessReader;
+
+mod inferior;
 
 #[derive(Clone, Debug)]
 pub enum ProcessState {
@@ -37,15 +42,21 @@ pub enum ProcessState {
 /// signal control of the inferior process.  It is the debugger’s view
 /// of “the program being debugged.”
 #[allow(dead_code)]
-pub struct Inferior {
+pub struct InferiorInner {
     /// PID of the inferior process.
     pub pid: Pid,
     /// PTY master fd (for resize/ioctl).
     pub master_fd: RawFd,
-    /// Reader for merged stdout/stderr (own fd).
-    pub reader: File,
     /// Writer to stdin (own fd).
     pub writer: File,
+    /// The raw file descriptor for the inferior's stdout/stderr.
+    pub reader_fd: OwnedFd,
+}
+
+pub struct Inferior {
+    inner: InferiorInner,
+    /// A simple channel to send shutdown event to the inferior reader.
+    shutdown_channel: Sender<()>,
 }
 
 pub enum TargetProcess {
@@ -54,15 +65,25 @@ pub enum TargetProcess {
     Disconnected,
 }
 
+impl TargetProcess {
+    fn shutdown(&mut self) {
+        match self {
+            TargetProcess::Inferior(inferior) => {
+                // TODO: handle the error here
+                let _ = inferior.shutdown_channel.send(());
+            },
+            TargetProcess::Attached(_)
+            | TargetProcess::Disconnected => {},
+        }
+    }
+}
+
 /// The primary struct containing information about the process being debugged.
 #[allow(dead_code)]
 pub struct Process {
     cli_options: Options,
     /// State of the inferior process.
     state: ProcessState,
-
-    /// `Option` if we have connect to an existing process yet, or have not spawned
-    /// an inferior process yet.
     target_process: TargetProcess,
 }
 
@@ -95,8 +116,22 @@ impl Process {
             }
             LaunchType::Name { ref name } => {
                 trace!("Spawning inferior process {:?}", name);
-                let inferior =
+                let inferior_inner =
                     launch_file(name, args)?.expect("Should receive inferior process info");
+
+                // TODO: start inferior reader
+                let (shutdown_send, shutdown_recv) = crossbeam_channel::bounded(1);
+                let (out_send, _out_recv) = crossbeam_channel::unbounded();
+                let mut reader = InferiorProcessReader {
+                    fd: inferior_inner.reader_fd.try_clone()?,
+                    send_channel: out_send,
+                    shutdown_channel: shutdown_recv,
+                };
+                thread::spawn(move || {
+                    reader.run();
+                });
+
+                let inferior = Inferior { inner: inferior_inner, shutdown_channel: shutdown_send };
                 self.target_process = TargetProcess::Inferior(inferior);
             }
         }
@@ -109,7 +144,7 @@ impl Process {
 
     fn pid(&self) -> Option<Pid> {
         match self.target_process {
-            TargetProcess::Inferior(ref inferior) => Some(inferior.pid),
+            TargetProcess::Inferior(ref inferior) => Some(inferior.inner.pid),
             TargetProcess::Attached(pid) => Some(pid),
             TargetProcess::Disconnected => None,
         }
@@ -134,12 +169,19 @@ impl Process {
     pub fn wait_on_signal(&mut self) -> Result<WaitStatus> {
         let wait_status = waitpid(self.expect_pid(), None)?;
 
+        // if exited/terminated, send shutdown signal to inferior reader
         match wait_status {
-            WaitStatus::Exited(_, _) => self.state = ProcessState::Exited,
-            WaitStatus::Signaled(_, _, _) => self.state = ProcessState::Terminated,
+            WaitStatus::Exited(_, _) => {
+                self.state = ProcessState::Exited;
+                self.target_process.shutdown();
+            }
+            WaitStatus::Signaled(_, _, _) => {
+                self.state = ProcessState::Terminated;
+                self.target_process.shutdown();
+            }
             WaitStatus::Stopped(_, _) => self.state = ProcessState::Stopped,
-            _ => (),
-        }
+            _ => {},
+        };
 
         Ok(wait_status)
     }
@@ -167,6 +209,8 @@ impl Process {
             self.state = ProcessState::Unknown;
         }
 
+        self.target_process.shutdown();
+        
         Ok(())
     }
 }
@@ -178,7 +222,7 @@ fn attach_pid(pid: i32) -> Result<Pid> {
     Ok(p)
 }
 
-fn launch_file(name: &Path, _args: Vec<String>) -> Result<Option<Inferior>> {
+fn launch_file(name: &Path, _args: Vec<String>) -> Result<Option<InferiorInner>> {
     let pty = openpty(
         Some(&Winsize {
             ws_row: 24,
@@ -194,16 +238,15 @@ fn launch_file(name: &Path, _args: Vec<String>) -> Result<Option<Inferior>> {
             let _ = close(pty.slave);
 
             // Duplicate master for independent reader/writer File ownership
-            let rfd = dup(pty.master.try_clone()?)?; // reader fd
-            let wfd = dup(pty.master.try_clone()?)?; // writer fd
+            let rfd = dup(pty.master.try_clone()?)?;
+            let wfd = dup(pty.master.try_clone()?)?;
 
-            let reader = File::from(rfd);
             let writer = File::from(wfd);
 
-            Ok(Some(Inferior {
+            Ok(Some(InferiorInner {
                 pid: child,
                 master_fd: pty.master.as_raw_fd(),
-                reader,
+                reader_fd: rfd.try_clone()?,
                 writer,
             }))
         }
