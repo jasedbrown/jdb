@@ -318,7 +318,6 @@ fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result
 
                 ret_code = EventResult::Editor { command: last_line };
             } else {
-                
                 assert!(state.editor.input(key));
             }
         }
@@ -327,7 +326,7 @@ fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result
             KeyCode::Char(c) => match c {
                 'x' if matches!(key.modifiers, KeyModifiers::META | KeyModifiers::ALT) => {
                     state.set_focus(&DebuggerPane::Command);
-                },
+                }
                 'c' | 'e' => {
                     state.set_focus(&DebuggerPane::Command);
                 }

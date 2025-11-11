@@ -82,7 +82,11 @@ fn render_debugger_screen(
 ) {
     let [src, logs, minibuffer] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40), Constraint::Length(3)])
+        .constraints([
+            Constraint::Percentage(60),
+            Constraint::Percentage(40),
+            Constraint::Length(3),
+        ])
         .areas(rect);
 
     ///////////////////////////////
