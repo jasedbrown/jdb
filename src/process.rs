@@ -1,11 +1,18 @@
 use anyhow::{Result, anyhow};
+use nix::libc;
+use nix::pty::{Winsize, openpty};
 use nix::sys::ptrace;
 use nix::sys::signal::{Signal, kill};
 use nix::sys::wait::{WaitStatus, waitpid};
-use nix::unistd::{ForkResult, Pid, execvp, fork};
+use nix::unistd::{
+    ForkResult, Pid, close, dup, dup2_stderr, dup2_stdin, dup2_stdout, execvp, fork, setsid,
+};
 use std::ffi::{CStr, CString};
+use std::fs::File;
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
+use tracing::trace;
 
 use crate::options::{LaunchType, Options};
 
@@ -23,48 +30,93 @@ pub enum ProcessState {
     Terminated,
 }
 
-#[derive(Clone, Debug)]
+/// Represents a process ("inferior") that the debugger has spawned
+/// under a pseudo-terminal (PTY).  
+///
+/// This structure owns all handles necessary for I/O, resizing, and
+/// signal control of the inferior process.  It is the debugger’s view
+/// of “the program being debugged.”
+#[allow(dead_code)]
+pub struct Inferior {
+    /// PID of the inferior process.
+    pub pid: Pid,
+    /// PTY master fd (for resize/ioctl).
+    pub master_fd: RawFd,
+    /// Reader for merged stdout/stderr (own fd).
+    pub reader: File,
+    /// Writer to stdin (own fd).
+    pub writer: File,
+}
+
+pub enum TargetProcess {
+    Inferior(Inferior),
+    Attached(Pid),
+    Disconnected,
+}
+
 /// The primary struct containing information about the process being debugged.
+#[allow(dead_code)]
 pub struct Process {
     cli_options: Options,
     /// State of the inferior process.
     state: ProcessState,
-    /// PID of the process. Optional in case it's not currently running (and need to be
-    /// spawned as an inferior process).
-    pid: Option<Pid>,
+
+    /// `Option` if we have connect to an existing process yet, or have not spawned
+    /// an inferior process yet.
+    target_process: TargetProcess,
 }
 
 impl Process {
     pub fn new(cli_options: Options) -> Process {
         match cli_options.launch_type {
-            LaunchType::Pid { pid } => Process {
+            LaunchType::Pid { pid: _ } => Process {
                 cli_options,
-                pid: Some(Pid::from_raw(pid)),
                 state: ProcessState::Unknown,
+                target_process: TargetProcess::Disconnected,
             },
             LaunchType::Name { name } => Process {
                 cli_options: Options {
                     launch_type: LaunchType::Name { name },
                     history_file: cli_options.history_file.clone(),
                 },
-                pid: None,
                 state: ProcessState::Unknown,
+                target_process: TargetProcess::Disconnected,
             },
         }
     }
 
     /// Attach to the process, spawning a new process if we only have a name.
     pub fn attach(&mut self, args: Vec<String>) -> Result<()> {
-        let pid = match self.cli_options.launch_type {
-            LaunchType::Pid { pid } => attach_pid(pid)?,
-            LaunchType::Name { ref name } => launch_file(name, args)?,
-        };
+        match self.cli_options.launch_type {
+            LaunchType::Pid { pid } => {
+                trace!("Attaching to pid {:?}", pid);
+                let pid = attach_pid(pid)?;
+                self.target_process = TargetProcess::Attached(pid);
+            }
+            LaunchType::Name { ref name } => {
+                trace!("Spawning inferior process {:?}", name);
+                let inferior =
+                    launch_file(name, args)?.expect("Should receive inferior process info");
+                self.target_process = TargetProcess::Inferior(inferior);
+            }
+        }
 
         // TODO: not sure about setting the state here to Running ...
         self.state = ProcessState::Running;
-        self.pid = Some(pid);
         self.wait_on_signal()?;
         Ok(())
+    }
+
+    fn pid(&self) -> Option<Pid> {
+        match self.target_process {
+            TargetProcess::Inferior(ref inferior) => Some(inferior.pid),
+            TargetProcess::Attached(pid) => Some(pid),
+            TargetProcess::Disconnected => None,
+        }
+    }
+
+    fn expect_pid(&self) -> Pid {
+        self.pid().expect("Should have PID at this point")
     }
 
     pub fn resume(&mut self) -> Result<()> {
@@ -72,7 +124,7 @@ impl Process {
             return Err(anyhow!("Inferior process not being debugged"));
         }
 
-        let pid = self.pid.unwrap();
+        let pid = self.expect_pid();
         ptrace::cont(pid, None)?;
         self.state = ProcessState::Running;
 
@@ -80,7 +132,7 @@ impl Process {
     }
 
     pub fn wait_on_signal(&mut self) -> Result<WaitStatus> {
-        let wait_status = waitpid(self.pid, None)?;
+        let wait_status = waitpid(self.expect_pid(), None)?;
 
         match wait_status {
             WaitStatus::Exited(_, _) => self.state = ProcessState::Exited,
@@ -97,7 +149,7 @@ impl Process {
             return Ok(());
         }
 
-        let pid = self.pid.expect("PID should be a value");
+        let pid = self.expect_pid();
 
         // tell the inferior to STOP and wait for it
         kill(pid, Some(Signal::SIGSTOP))?;
@@ -126,20 +178,53 @@ fn attach_pid(pid: i32) -> Result<Pid> {
     Ok(p)
 }
 
-fn launch_file(name: &Path, _args: Vec<String>) -> Result<Pid> {
+fn launch_file(name: &Path, _args: Vec<String>) -> Result<Option<Inferior>> {
+    let pty = openpty(
+        Some(&Winsize {
+            ws_row: 24,
+            ws_col: 80,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        }),
+        None,
+    )?;
     match unsafe { fork()? } {
-        ForkResult::Parent { child } => Ok(child),
+        ForkResult::Parent { child } => {
+            // Parent keeps master; close slave
+            let _ = close(pty.slave);
+
+            // Duplicate master for independent reader/writer File ownership
+            let rfd = dup(pty.master.try_clone()?)?; // reader fd
+            let wfd = dup(pty.master.try_clone()?)?; // writer fd
+
+            let reader = File::from(rfd);
+            let writer = File::from(wfd);
+
+            Ok(Some(Inferior {
+                pid: child,
+                master_fd: pty.master.as_raw_fd(),
+                reader,
+                writer,
+            }))
+        }
         ForkResult::Child => {
-            // set the child as tracable
+            setsid()?;
+            // make slave controlling TTY
+            unsafe { libc::ioctl(pty.slave.as_raw_fd(), libc::TIOCSCTTY, 0) };
+
+            dup2_stdin(pty.slave.try_clone()?)?;
+            dup2_stdout(pty.slave.try_clone()?)?;
+            dup2_stderr(pty.slave.try_clone()?)?;
+            let _ = close(pty.slave.try_clone()?);
+            let _ = close(pty.master);
+
             ptrace::traceme()?;
 
             let filename = CString::new(name.as_os_str().as_bytes())?;
             let cstr_args: Vec<&CStr> = vec![];
 
             let _ = execvp(filename.as_c_str(), &cstr_args);
-
-            // "return" some PID-looking thing to make the compiler happy
-            Ok(Pid::from_raw(0))
+            Ok(None)
         }
     }
 }
