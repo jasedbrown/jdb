@@ -1,9 +1,10 @@
 use std::os::fd::OwnedFd;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use std::time::Duration;
-use tracing::trace;
+use tracing::{error, trace};
 
 /// A struct to live in a daemon thread to read the stdout/stderr of the inferior process
+#[allow(dead_code)]
 pub struct InferiorProcessReader {
     /// File descriptor of the stdout/stderr channel.
     pub fd: OwnedFd,
@@ -27,6 +28,11 @@ impl InferiorProcessReader {
             }
             
             std::thread::sleep(Duration::from_millis(10));
+
+            // silly send
+            if let Err(e) = self.send_channel.send("hello, jdb".to_string()) {
+                error!("Error when sending to loggin_tx channel: {:?}", e)
+            }
         }
     }
 }

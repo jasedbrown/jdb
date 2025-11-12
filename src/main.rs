@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::Parser;
-use crossbeam_channel::{Select, unbounded};
+use crossbeam_channel::{select, unbounded};
 use jdb::{
+    JdbEvent,
     debugger::{Debugger, DispatchResult},
     options::Options,
     process::Process,
-    tui::{self, EventResult, Tui},
+    tui::{EventResult, Tui},
 };
-use ratatui::crossterm::event::KeyEvent;
 use tracing::{error, trace};
 use tracing_appender::non_blocking;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -42,11 +42,6 @@ fn init_logging() -> Result<WorkerGuard> {
     Ok(guard)
 }
 
-pub enum JdbEvent {
-    InferiorLogging(String),
-    TerminalKey(KeyEvent),
-}
-
 fn main() -> Result<()> {
     let options = Options::parse();
     options.validate()?;
@@ -63,38 +58,53 @@ fn main() -> Result<()> {
     let (tui_shutdown_tx, tui_shutdown_rx) = unbounded();
     let mut tui = Tui::new(tui_tx, tui_shutdown_rx)?;
 
-    let mut select = Select::new();
-    select.recv(&tui_rx);
-
     loop {
         tui.render(&debugger, &process)?;
-
-        match tui.await_event() {
-            Ok(EventResult::Normal) => {
-                // nop?
-            }
-            Ok(EventResult::Editor { command }) => {
-                trace!(?command, "next editor command");
-                match debugger.next(command, &mut process) {
-                    Ok(DispatchResult::Normal) => {
-                        // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
-                    }
-                    Ok(DispatchResult::Exit) => {
-                        break;
-                    }
-                    Err(e) => error!("Error: {:?}", e),
+        select! {
+            // handle output from the inferior process
+            recv(process_rx) -> msg => match msg {
+                Ok(s) => process.receive_inferior_logging(s),
+                Err(e) => error!("Error receiving message from inferior processing logging: {:?}", e),
+            },
+            // handle key presses
+            recv(tui_rx) -> msg => match msg {
+                Ok(jdb_event) => match jdb_event {
+                    JdbEvent::TerminalKey(key_event) => {
+                        match tui.handle_key_press(key_event) {
+                            Ok(EventResult::Normal) => {
+                                // nop?
+                            }
+                            Ok(EventResult::Editor { command }) => {
+                                trace!(?command, "next editor command");
+                                match debugger.next(command, &mut process) {
+                                    Ok(DispatchResult::Normal) => {
+                                        // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
+                                    }
+                                    Ok(DispatchResult::Exit) => {
+                                        break;
+                                    }
+                                    Err(e) => error!("Error: {:?}", e),
+                                }
+                            }
+                            Ok(EventResult::Quit) => {
+                                // If i actually allow this from the TUI, need to stop debugger/inferior process
+                                break;
+                                
+                            },
+                            Err(e) => error!("Error received from tui message channel: {:?}", e),
+                        }
+                    },
+                    JdbEvent::TerminalResize => {}
                 }
-            }
-            Ok(EventResult::Quit) => {
-                // If i actually allow this from the TUI, need to stop debugger/inferior process
-                break;
-            }
-            Err(e) => {
-                error!(error = ?e, "Error");
+                Err(e) => error!("Error receiving message from inferior processing logging: {:?}", e),
             }
         }
     }
 
+    // if we've exited the main loop, make sure to signal everyone to shutdown
+    let _ = tui_shutdown_tx.send(());
+    let _ = process_shutdown_tx.send(());
+    
     tui.exit()?;
     Ok(())
 }

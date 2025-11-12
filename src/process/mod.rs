@@ -53,10 +53,9 @@ pub struct InferiorInner {
     pub reader_fd: OwnedFd,
 }
 
+// TODO: this wrapper around the inner might turn out to be unnessary
 pub struct Inferior {
     inner: InferiorInner,
-    /// A simple channel to send shutdown event to the inferior reader.
-    shutdown_channel: Sender<()>,
 }
 
 pub enum TargetProcess {
@@ -68,9 +67,7 @@ pub enum TargetProcess {
 impl TargetProcess {
     fn shutdown(&mut self) {
         match self {
-            TargetProcess::Inferior(inferior) => {
-                // TODO: handle the error here
-                let _ = inferior.shutdown_channel.send(());
+            TargetProcess::Inferior(_inferior) => {
             },
             TargetProcess::Attached(_)
             | TargetProcess::Disconnected => {},
@@ -85,24 +82,37 @@ pub struct Process {
     /// State of the inferior process.
     state: ProcessState,
     target_process: TargetProcess,
+    /// Captured stdout/stderr from the inferior process.
+    /// We reason the inferior output is stored here, rather than in
+    /// `Inferior` is that we'd like the output to still be available
+    /// for tui rendering even after the inferior has existed (and we've
+    /// tansistioned the state/target_process).
+    /// -- I might revisit this decision, though.
+    // Vec is a starting point/placeholder for now, would prefer
+    // something like a circular buffer
+    inferior_output: Vec<String>,
+    inferior_tx: Sender<String>,
+    shutdown_rx: Receiver<()>
 }
 
 impl Process {
-    pub fn new(cli_options: Options, tui_tx: Sender<EventResult>, shutdown_rx: Receiver<()>) -> Process {
-        match cli_options.launch_type {
-            LaunchType::Pid { pid: _ } => Process {
-                cli_options,
-                state: ProcessState::Unknown,
-                target_process: TargetProcess::Disconnected,
+    pub fn new(cli_options: Options, inferior_tx: Sender<String>, shutdown_rx: Receiver<()>) -> Process {
+        // Note: this is slightly borked for PID-based launches :shrug:
+        let opts = match cli_options.launch_type {
+            LaunchType::Pid { pid: _ } => cli_options,
+            LaunchType::Name { name } => Options {
+                launch_type: LaunchType::Name { name },
+                history_file: cli_options.history_file.clone(),
             },
-            LaunchType::Name { name } => Process {
-                cli_options: Options {
-                    launch_type: LaunchType::Name { name },
-                    history_file: cli_options.history_file.clone(),
-                },
-                state: ProcessState::Unknown,
-                target_process: TargetProcess::Disconnected,
-            },
+        };
+
+        Process {
+            cli_options: opts,
+            state: ProcessState::Unknown,
+            target_process: TargetProcess::Disconnected,
+            inferior_output: Vec::new(),
+            inferior_tx,
+            shutdown_rx,
         }
     }
 
@@ -116,22 +126,23 @@ impl Process {
             }
             LaunchType::Name { ref name } => {
                 trace!("Spawning inferior process {:?}", name);
+                self.inferior_output.clear();
                 let inferior_inner =
                     launch_file(name, args)?.expect("Should receive inferior process info");
 
-                // TODO: start inferior reader
-                let (shutdown_send, shutdown_recv) = crossbeam_channel::bounded(1);
-                let (out_send, _out_recv) = crossbeam_channel::unbounded();
+                // start inferior reader
                 let mut reader = InferiorProcessReader {
                     fd: inferior_inner.reader_fd.try_clone()?,
-                    send_channel: out_send,
-                    shutdown_channel: shutdown_recv,
+                    send_channel: self.inferior_tx.clone(),
+                    shutdown_channel: self.shutdown_rx.clone(),
                 };
                 thread::spawn(move || {
                     reader.run();
                 });
 
-                let inferior = Inferior { inner: inferior_inner, shutdown_channel: shutdown_send };
+                let inferior = Inferior {
+                    inner: inferior_inner,
+                };
                 self.target_process = TargetProcess::Inferior(inferior);
             }
         }
@@ -212,6 +223,15 @@ impl Process {
         self.target_process.shutdown();
         
         Ok(())
+    }
+
+    pub fn receive_inferior_logging(&mut self, output: String) {
+        self.inferior_output.push(output);
+    }
+
+    pub fn last_n_log_lines(&self, n: usize) -> &[String] {
+        let len = self.inferior_output.len().saturating_sub(n);
+        &self.inferior_output[len..]
     }
 }
 
