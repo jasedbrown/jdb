@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use crossbeam_channel::{Receiver, Sender};
 use log::LevelFilter;
 use ratatui::{
     Terminal,
@@ -213,16 +214,20 @@ pub enum EventResult {
 
 impl Tui {
     /// Put terminal into raw mode + alternate screen
-    pub fn new() -> Result<Self> {
+    pub fn new(tui_tx: Sender<EventResult>, shutdown_rx: Receiver<()>) -> Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
 
+        let tui_listener = ;
+        std::thread::spawn(move || tui_listener.run() );
+        
         Ok(Self {
             terminal,
             state: Default::default(),
+            shutdown_rx,
         })
     }
 
@@ -244,15 +249,15 @@ impl Tui {
             Err(e) => Err(anyhow!(e)),
         }
     }
-
-    pub fn await_event(&mut self) -> Result<EventResult> {
+    
+    fn await_event(tui_tx: Sender<JdbEvent>) {
         match crossterm::event::read() {
             Ok(event) => match event {
                 Event::Key(key) => {
                     match key.kind {
                         // we only care about key presses.
-                        KeyEventKind::Release | KeyEventKind::Repeat => Ok(EventResult::Normal),
-                        KeyEventKind::Press => self.handle_key_press(key),
+                        KeyEventKind::Release | KeyEventKind::Repeat => {},
+                        KeyEventKind::Press => tui_tx.send(JdbEvent::TerminalKey(key))?,
                     }
                 }
                 Event::Resize(_, _) => Ok(EventResult::Normal),
@@ -278,7 +283,7 @@ impl Tui {
         Ok(EventResult::Normal)
     }
 
-    fn handle_key_press(&mut self, key: KeyEvent) -> Result<EventResult> {
+    pub fn handle_key_press(&mut self, key: KeyEvent) -> Result<EventResult> {
         // handle Fn keys before everything as that will switch screens
         if let KeyCode::F(fkey_num) = key.code {
             return self.handle_function_key(fkey_num);

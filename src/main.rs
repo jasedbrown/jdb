@@ -1,10 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
+use crossbeam_channel::{Select, unbounded};
 use jdb::{
     debugger::{Debugger, DispatchResult},
     options::Options,
     process::Process,
-    tui::{EventResult, Tui},
+    tui::{self, EventResult, Tui},
 };
 use ratatui::crossterm::event::KeyEvent;
 use tracing::{error, trace};
@@ -41,10 +42,9 @@ fn init_logging() -> Result<WorkerGuard> {
     Ok(guard)
 }
 
-pub enum Event {
+pub enum JdbEvent {
     InferiorLogging(String),
     TerminalKey(KeyEvent),
-    
 }
 
 fn main() -> Result<()> {
@@ -54,11 +54,21 @@ fn main() -> Result<()> {
     let _guard = init_logging()?;
 
     let mut debugger = Debugger::new(&options)?;
-    let mut process = Process::new(options);
-    let mut tui = Tui::new()?;
+
+    let (process_tx, process_rx) = unbounded();
+    let (process_shutdown_tx, process_shutdown_rx) = unbounded();
+    let mut process = Process::new(options, process_tx, process_shutdown_rx);
+
+    let (tui_tx, tui_rx) = unbounded();
+    let (tui_shutdown_tx, tui_shutdown_rx) = unbounded();
+    let mut tui = Tui::new(tui_tx, tui_shutdown_rx)?;
+
+    let mut select = Select::new();
+    select.recv(&tui_rx);
 
     loop {
         tui.render(&debugger, &process)?;
+
         match tui.await_event() {
             Ok(EventResult::Normal) => {
                 // nop?

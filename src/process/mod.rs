@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use crossbeam_channel::{Receiver, Sender}
+use crossbeam_channel::{Receiver, Sender};
 use nix::libc;
 use nix::pty::{Winsize, openpty};
 use nix::sys::ptrace;
@@ -88,7 +88,7 @@ pub struct Process {
 }
 
 impl Process {
-    pub fn new(cli_options: Options) -> Process {
+    pub fn new(cli_options: Options, tui_tx: Sender<EventResult>, shutdown_rx: Receiver<()>) -> Process {
         match cli_options.launch_type {
             LaunchType::Pid { pid: _ } => Process {
                 cli_options,
