@@ -288,7 +288,7 @@ fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result
 
     if in_edit_mode {
         // M-e is the magick binding to exit editor mode
-        if key.code == KeyCode::Char('x') && key.modifiers == KeyModifiers::META {
+        if key.code == KeyCode::Char('x') && key.modifiers == KeyModifiers::ALT {
             state.set_focus(&DebuggerPane::Source);
         } else {
             // grab the current line, in any, before sending the RETURN event
@@ -304,7 +304,7 @@ fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result
 
                 ret_code = EventResult::Editor { command: last_line };
             } else {
-                assert!(state.editor.input(key));
+                state.editor.input(key);
             }
         }
     } else {

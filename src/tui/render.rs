@@ -27,9 +27,14 @@ fn build_watchers_pane(state: &DebuggerState) -> impl Widget {
 
 fn build_editor_pane(state: &DebuggerState) -> TextArea<'_> {
     let block = build_bounding_rect(&DebuggerPane::Command, None, state);
+
+    // TODO: render with a line header: jdb >
+    // apparently I can't use tui-textarea for this, but I may need to move away from it at some point.
+
     // TODO: the clone() sucks, but let's get this app going, and then fix up
     let mut e = state.editor.clone();
     e.set_block(block);
+    e.set_cursor_line_style(Style::default());
     e
 }
 
@@ -95,7 +100,7 @@ fn render_debugger_screen(
         .constraints([
             Constraint::Percentage(60),
             Constraint::Percentage(40),
-            Constraint::Length(3),
+            Constraint::Length(5),
         ])
         .areas(rect);
 
@@ -128,7 +133,6 @@ fn render_debugger_screen(
     let bottom_pane_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(100)])
-        // .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(minibuffer);
     // command pane
     let command_pane = build_editor_pane(state);
@@ -170,9 +174,6 @@ fn render_logging_screen(state: &DebuggerLogScreenState, frame: &mut Frame, rect
         .set_level_for_target("App", LevelFilter::Debug)
         .set_level_for_target("background-task", LevelFilter::Info);
     let formatter: Option<Box<dyn LogFormatter>> = None;
-    // if cfg!(feature = "formatter") {
-    //     formatter = Some(Box::new(MyLogFormatter {}));
-    // }
 
     TuiLoggerWidget::default()
         .block(Block::bordered().title("Filtered TuiLoggerWidget"))
