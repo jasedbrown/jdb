@@ -33,9 +33,19 @@ fn build_editor_pane(state: &DebuggerState) -> TextArea<'_> {
     e
 }
 
-fn build_output_pane(state: &DebuggerState) -> impl Widget {
+fn build_output_pane(state: &DebuggerState, process: &Process) -> impl Widget {
     let block = build_bounding_rect(&DebuggerPane::Logs, None, state);
-    Paragraph::new("...")
+
+    // TODO: dynamically adjust to the pane size? Kinda depnds on the width of
+    // the lines and if they wrap ... :shrug:
+    let log_lines = process.last_n_log_lines(10);
+    let text_lines: Vec<Line> = log_lines
+        .iter()
+        .rev()
+        .map(|line| line.as_str().into())
+        .collect();
+
+    Paragraph::new(text_lines)
         .style(Style::default().fg(Color::Green))
         .block(block)
 }
@@ -76,7 +86,7 @@ fn build_bounding_rect<'a>(
 fn render_debugger_screen(
     state: &DebuggerState,
     _debugger: &Debugger,
-    _process: &Process,
+    process: &Process,
     frame: &mut Frame,
     rect: Rect,
 ) {
@@ -110,7 +120,7 @@ fn render_debugger_screen(
         .constraints([Constraint::Percentage(100)])
         .split(logs);
     // logs/stdout pane
-    let output_pane = build_output_pane(state);
+    let output_pane = build_output_pane(state, process);
     frame.render_widget(output_pane, bottom_pane_chunks[0]);
 
     /////////////////////////////

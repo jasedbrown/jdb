@@ -479,6 +479,7 @@ dependencies = [
  "crossbeam-channel",
  "dirs",
  "log",
+ "mio",
  "nix",
  "ratatui",
  "tracing",

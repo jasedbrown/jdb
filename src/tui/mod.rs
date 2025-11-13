@@ -16,7 +16,7 @@ use tracing::{debug, error, trace};
 use tui_logger::{TuiWidgetEvent, TuiWidgetState};
 use tui_textarea::TextArea;
 
-use crate::{debugger::Debugger, process::Process, tui::render::render_screen, JdbEvent};
+use crate::{JdbEvent, debugger::Debugger, process::Process, tui::render::render_screen};
 
 mod render;
 
@@ -221,8 +221,8 @@ impl Tui {
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
 
-        std::thread::spawn(move || await_event(tui_tx, shutdown_rx) );
-        
+        std::thread::spawn(move || await_event(tui_tx, shutdown_rx));
+
         Ok(Self {
             terminal,
             state: Default::default(),
@@ -372,42 +372,43 @@ fn logging_screen_key_press(
 fn await_event(tui_tx: Sender<JdbEvent>, shutdown_rx: Receiver<()>) {
     loop {
         match crossterm::event::poll(Duration::from_millis(100)) {
-            Ok(has_event) => if has_event {
-                match crossterm::event::read() {
-                    Ok(event) => match event {
-                        Event::Key(key) => {
-                            match key.kind {
-                                // we only care about key presses.
-                                KeyEventKind::Release | KeyEventKind::Repeat => {},
-                                KeyEventKind::Press =>  {
-                                    if let Err(e) = tui_tx.send(JdbEvent::TerminalKey(key)) {
-                                        error!("Error when sending to tui_tx channel: {:?}", e)
+            Ok(has_event) => {
+                if has_event {
+                    match crossterm::event::read() {
+                        Ok(event) => match event {
+                            Event::Key(key) => {
+                                match key.kind {
+                                    // we only care about key presses.
+                                    KeyEventKind::Release | KeyEventKind::Repeat => {}
+                                    KeyEventKind::Press => {
+                                        if let Err(e) = tui_tx.send(JdbEvent::TerminalKey(key)) {
+                                            error!("Error when sending to tui_tx channel: {:?}", e)
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Event::Resize(_, _) => {
-                            if let Err(e) = tui_tx.send(JdbEvent::TerminalResize) {
-                                error!("Error when sending to tui_tx channel: {:?}", e)
+                            Event::Resize(_, _) => {
+                                if let Err(e) = tui_tx.send(JdbEvent::TerminalResize) {
+                                    error!("Error when sending to tui_tx channel: {:?}", e)
+                                }
                             }
+                            // handle Event::Paste
+                            _ => {}
                         },
-                        // handle Event::Paste
-                        _ => {},
-                    },
-                    // TODO: might want to send an error type of JdbEvent
-                    Err(e) => error!("Error reading terminal::event: {:?}", e),
+                        // TODO: might want to send an error type of JdbEvent
+                        Err(e) => error!("Error reading terminal::event: {:?}", e),
+                    }
+                } else {
+                    // check the shutdown channel
+                    if !shutdown_rx.is_empty() {
+                        // drain the channel
+                        debug!("Terminal event reading thread received shutdown message");
+                        return;
+                    }
                 }
-            } else {
-                // check the shutdown channel
-                if !shutdown_rx.is_empty() {
-                    // drain the channel
-                    debug!("Terminal event reading thread received shutdown message");
-                    return;
-                }
-            },
+            }
             // TODO: might want to send an error type of JdbEvent
             Err(e) => error!("Error polling for terminal event: {:?}", e),
         }
-
     }
 }

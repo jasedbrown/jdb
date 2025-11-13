@@ -17,7 +17,7 @@ use std::thread;
 use tracing::trace;
 
 use crate::options::{LaunchType, Options};
-use crate::process::inferior::InferiorProcessReader;
+use crate::process::inferior::read_inferior_logging;
 
 mod inferior;
 
@@ -67,10 +67,8 @@ pub enum TargetProcess {
 impl TargetProcess {
     fn shutdown(&mut self) {
         match self {
-            TargetProcess::Inferior(_inferior) => {
-            },
-            TargetProcess::Attached(_)
-            | TargetProcess::Disconnected => {},
+            TargetProcess::Inferior(_inferior) => {}
+            TargetProcess::Attached(_) | TargetProcess::Disconnected => {}
         }
     }
 }
@@ -92,11 +90,15 @@ pub struct Process {
     // something like a circular buffer
     inferior_output: Vec<String>,
     inferior_tx: Sender<String>,
-    shutdown_rx: Receiver<()>
+    shutdown_rx: Receiver<()>,
 }
 
 impl Process {
-    pub fn new(cli_options: Options, inferior_tx: Sender<String>, shutdown_rx: Receiver<()>) -> Process {
+    pub fn new(
+        cli_options: Options,
+        inferior_tx: Sender<String>,
+        shutdown_rx: Receiver<()>,
+    ) -> Process {
         // Note: this is slightly borked for PID-based launches :shrug:
         let opts = match cli_options.launch_type {
             LaunchType::Pid { pid: _ } => cli_options,
@@ -130,14 +132,13 @@ impl Process {
                 let inferior_inner =
                     launch_file(name, args)?.expect("Should receive inferior process info");
 
+                let fd_clone = inferior_inner.reader_fd.try_clone()?;
+                let inferior_tx_clone = self.inferior_tx.clone();
+                let shutdown_rx_clone = self.shutdown_rx.clone();
+
                 // start inferior reader
-                let mut reader = InferiorProcessReader {
-                    fd: inferior_inner.reader_fd.try_clone()?,
-                    send_channel: self.inferior_tx.clone(),
-                    shutdown_channel: self.shutdown_rx.clone(),
-                };
                 thread::spawn(move || {
-                    reader.run();
+                    read_inferior_logging(fd_clone, inferior_tx_clone, shutdown_rx_clone);
                 });
 
                 let inferior = Inferior {
@@ -191,7 +192,7 @@ impl Process {
                 self.target_process.shutdown();
             }
             WaitStatus::Stopped(_, _) => self.state = ProcessState::Stopped,
-            _ => {},
+            _ => {}
         };
 
         Ok(wait_status)
@@ -221,11 +222,12 @@ impl Process {
         }
 
         self.target_process.shutdown();
-        
+
         Ok(())
     }
 
     pub fn receive_inferior_logging(&mut self, output: String) {
+        trace!(?output, "inferior log event");
         self.inferior_output.push(output);
     }
 
