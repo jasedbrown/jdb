@@ -20,6 +20,8 @@ use crate::options::{LaunchType, Options};
 use crate::process::inferior::read_inferior_logging;
 
 mod inferior;
+mod register_info;
+mod registers;
 
 #[derive(Clone, Debug)]
 pub enum ProcessState {
