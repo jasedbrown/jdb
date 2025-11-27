@@ -92,14 +92,13 @@ impl Default for DebuggerState {
 
 impl DebuggerState {
     pub fn is_focus(&self, pane: &DebuggerPane) -> bool {
-        let focus = self.panes.get(self.focus_pane_idx).expect(
-            format!(
+        let focus = self.panes.get(self.focus_pane_idx).unwrap_or_else(|| {
+            panic!(
                 "Array index {} out of bounds {}",
                 self.focus_pane_idx,
                 self.panes.len()
             )
-            .as_str(),
-        );
+        });
         focus == pane
     }
 
@@ -150,26 +149,24 @@ impl DebuggerLogScreenState {
     }
 
     fn transition(&mut self, event: TuiWidgetEvent) {
-        let widget_state = self.states.get(self.current_pane_idx).expect(
-            format!(
+        let widget_state = self.states.get(self.current_pane_idx).unwrap_or_else(|| {
+            panic!(
                 "Array index {} out of bounds {}",
                 self.current_pane_idx,
                 self.states.len()
             )
-            .as_str(),
-        );
+        });
         widget_state.transition(event);
     }
 
     pub fn current_state(&self) -> &TuiWidgetState {
-        self.states.get(self.current_pane_idx).expect(
-            format!(
+        self.states.get(self.current_pane_idx).unwrap_or_else(|| {
+            panic!(
                 "Array index {} out of bounds {}",
                 self.current_pane_idx,
                 self.states.len()
             )
-            .as_str(),
-        )
+        })
     }
 }
 

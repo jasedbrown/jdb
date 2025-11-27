@@ -42,7 +42,7 @@ impl Debugger {
     }
 
     pub fn next(&mut self, command: String, process: &mut Process) -> Result<DispatchResult> {
-        let command = command;
+        // let command = command;
         if command.is_empty() {
             trace!("next editor command is empty line, will replay last command");
             // execute last command, a la gdb but definitely redraw, as well

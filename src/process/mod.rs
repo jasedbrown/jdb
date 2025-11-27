@@ -73,6 +73,14 @@ impl TargetProcess {
             TargetProcess::Attached(_) | TargetProcess::Disconnected => {}
         }
     }
+
+    pub fn pid(&self) -> Option<Pid> {
+        match self {
+            TargetProcess::Inferior(inferior) => Some(inferior.inner.pid),
+            TargetProcess::Attached(pid) => Some(*pid),
+            TargetProcess::Disconnected => None,
+        }
+    }
 }
 
 /// The primary struct containing information about the process being debugged.
@@ -157,11 +165,7 @@ impl Process {
     }
 
     fn pid(&self) -> Option<Pid> {
-        match self.target_process {
-            TargetProcess::Inferior(ref inferior) => Some(inferior.inner.pid),
-            TargetProcess::Attached(pid) => Some(pid),
-            TargetProcess::Disconnected => None,
-        }
+        self.target_process.pid()
     }
 
     fn expect_pid(&self) -> Pid {
