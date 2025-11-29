@@ -14,7 +14,7 @@ use strum::EnumDiscriminants;
 #[strum_discriminants(name(RegisterFormat))]
 pub enum RegisterValue {
     // placeholder variants ....
-    Uint(u32),
+    Uint(u64),
     // DoubleFloat(f32),
     // LongDouble(f64),
 }
@@ -68,6 +68,7 @@ macro_rules! REGISTER_LIST {
             (RAX, rax, 0, GeneralPurpose, W64);
             (RDX, rdx, 1, GeneralPurpose, W64);
             (RCX, rcx, 2, GeneralPurpose, W64);
+            (RBX, rbx, 3, GeneralPurpose, W64);
             (RSI, rsi, 4, GeneralPurpose, W64);
             (RDI, rdi, 5, GeneralPurpose, W64);
             (RBP, rbp, 6, GeneralPurpose, W64);

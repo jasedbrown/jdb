@@ -8,7 +8,7 @@ use nix::unistd::Pid;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use crate::process::register_info::{REGISTERS_INFO, Register, RegisterInfo, RegisterValue};
+use crate::process::register_info::{Register, RegisterInfo, RegisterType, RegisterValue, REGISTERS_INFO};
 
 // ugh, phf will not work as the keys must be of a limited set of types.
 // Just use lazy/once_cell to bulid a fucking map
@@ -23,6 +23,9 @@ static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(
 });
 
 /// Current state of the registers for the debugged process.
+///
+/// this is a glorified wrapper around the `user` struct, but deconstructed
+/// to the pieces we need.
 #[derive(Clone, Debug)]
 pub struct RegisterSnapshot {
     pid: Pid,
@@ -50,10 +53,36 @@ impl RegisterSnapshot {
         }
     }
 
-    pub fn get_value(&self, register: Register) -> RegisterValue {
-        // TODO: actually implement me
+    pub fn get_value(&self, register: &Register) -> RegisterValue {
         match register {
-            Register::R15 => RegisterValue::Uint(15),
+            // 64-bit values
+            Register::RAX => RegisterValue::Uint(self.user_gp.rax),
+            Register::RDX => RegisterValue::Uint(self.user_gp.rdx),
+            Register::RCX => RegisterValue::Uint(self.user_gp.rcx),
+            Register::RBX => RegisterValue::Uint(self.user_gp.rbx),
+            Register::RSI => RegisterValue::Uint(self.user_gp.rsi),
+            Register::RDI => RegisterValue::Uint(self.user_gp.rdi),
+            Register::RBP => RegisterValue::Uint(self.user_gp.rbp),
+            Register::RSP => RegisterValue::Uint(self.user_gp.rsp),
+            Register::R8 => RegisterValue::Uint(self.user_gp.r8),
+            Register::R9 => RegisterValue::Uint(self.user_gp.r9),
+            Register::R10 => RegisterValue::Uint(self.user_gp.r10),
+            Register::R11 => RegisterValue::Uint(self.user_gp.r11),
+            Register::R12 => RegisterValue::Uint(self.user_gp.r12),
+            Register::R13 => RegisterValue::Uint(self.user_gp.r13),
+            Register::R14 => RegisterValue::Uint(self.user_gp.r14),
+            Register::R15 => RegisterValue::Uint(self.user_gp.r15),
+            Register::RIP => RegisterValue::Uint(self.user_gp.rip),
+            Register::EFLAGS => RegisterValue::Uint(self.user_gp.eflags),
+            Register::CS => RegisterValue::Uint(self.user_gp.cs),
+            Register::FS => RegisterValue::Uint(self.user_gp.fs),
+            Register::SS => RegisterValue::Uint(self.user_gp.ss),
+            Register::DS => RegisterValue::Uint(self.user_gp.ds),
+            Register::ES => RegisterValue::Uint(self.user_gp.es),
+            Register::ORIGRAX => RegisterValue::Uint(self.user_gp.orig_rax),
+
+            // 32-bit registers
+            
             _ => RegisterValue::Uint(0),
         }
     }
@@ -78,8 +107,8 @@ pub fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
 
     let mut debug_regs = [0; 8];
     // read out the debug registers
+    let base_regs_offset = offset_of!(user, u_debugreg);
     for i in 0..debug_regs.len() {
-        let base_regs_offset = offset_of!(user, u_debugreg);
         // TODO: don't hardcode the offset
         let offset = base_regs_offset + (i * 8);
         let reg = read_user(pid, offset as _).unwrap();
