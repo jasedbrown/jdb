@@ -8,7 +8,7 @@ use nix::unistd::Pid;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use crate::process::register_info::{Register, RegisterInfo, RegisterType, RegisterValue, REGISTERS_INFO};
+use crate::process::register_info::{REGISTERS_INFO, Register, RegisterInfo, RegisterValue};
 
 // ugh, phf will not work as the keys must be of a limited set of types.
 // Just use lazy/once_cell to bulid a fucking map
@@ -82,7 +82,6 @@ impl RegisterSnapshot {
             Register::ORIGRAX => RegisterValue::Uint(self.user_gp.orig_rax),
 
             // 32-bit registers
-            
             _ => RegisterValue::Uint(0),
         }
     }

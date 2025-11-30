@@ -10,7 +10,7 @@
 
 use strum::EnumDiscriminants;
 
-#[derive(Clone, Copy, Debug, EnumDiscriminants, Hash)]
+#[derive(Clone, Copy, Debug, EnumDiscriminants)]
 #[strum_discriminants(name(RegisterFormat))]
 pub enum RegisterValue {
     // placeholder variants ....
@@ -48,8 +48,8 @@ impl RegisterWidth {
         }
     }
 
-    /// Register offset from the beginning of the register.
-    /// Really only applicaable to the 8-bit low registers
+    /// Offset from the 0th byte of the `user` struct.
+    /// Required for `read_user()` and `write_user()`.
     const fn offset(&self) -> usize {
         match self {
             RegisterWidth::W8L => 1,
@@ -171,41 +171,52 @@ macro_rules! DEFINE_ENUM {
     };
 }
 
-// pub struct RegisterInfo {
-//     register: Register,
-//     name: String,
-//     dwarf_id: i32,
-//     register_type: RegisterType,
-//     size: usize
-//     /// Offset into the `user` struct
-//     offset: usize,
-//     format: RegisterValueDiscriminants,  /// ????
-// }
+#[derive(Clone, Debug)]
+pub struct RegisterInfo {
+    pub register: Register,
+    /// The actual name of the register, as appears in the `user` family of structs.
+    // TODO: can this be a field/const function on `Register`?
+    pub name: &'static str,
+    pub dwarf_id: i32,
+    /// The byte offset into the `user` struct of this register.
+    /// Primarily used for `read_user()` and `write_user()`.
+    pub offset: usize,
+    /// Size in bytes of the register's value.
+    pub size: usize,
+    pub register_type: RegisterType,
+    pub format: RegisterFormat,
+}
 
 macro_rules! DEFINE_INFO {
     ( $( ($register:ident, $field:ident, $dwarf:expr, $reg_type:ident, $width:ident); )* ) => {
-        #[derive(Clone, Debug, Hash)]
-        pub struct RegisterInfo {
-            pub register: Register,
-            pub name: &'static str,
-            pub dwarf_id: i32,
-            pub offset: usize,
-            pub size: usize,
-            pub register_type: RegisterType,
-        }
-
         pub const REGISTERS_INFO: &[RegisterInfo] = &[
             $(
                 RegisterInfo {
                     register: Register::$register,
                     name: stringify!($field),
                     dwarf_id: $dwarf,
-                    offset: memoffset::offset_of!(libc::user_regs_struct, $field) + RegisterWidth::$width.offset(),
+                    offset: DEFINE_INFO!(@field_offset $reg_type, $field),
                     size: RegisterWidth::$width.width(),
                     register_type: RegisterType::$reg_type,
+                    format: RegisterFormat::Uint,
                 },
             )*
         ];
+    };
+
+    // Helper rules to select the correct struct type based on RegisterType
+    (@field_offset GeneralPurpose, $field:ident) => {
+        memoffset::offset_of!(libc::user, regs) + memoffset::offset_of!(libc::user_regs_struct, $field)
+    };
+    (@field_offset SubGeneralPurpose, $field:ident) => {
+        memoffset::offset_of!(libc::user, regs) + memoffset::offset_of!(libc::user_regs_struct, $field)
+    };
+    (@field_offset FloatingPoint, $field:ident) => {
+        memoffset::offset_of!(libc::user, i387) + memoffset::offset_of!(libc::user_fpregs_struct, $field)
+    };
+    (@field_offset Debug, $field:ident) => {
+        // For debug registers, they're stored as an array, so we use the field as-is
+        memoffset::offset_of!(libc::user, u_debugreg)
     };
 }
 
