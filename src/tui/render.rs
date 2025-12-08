@@ -1,4 +1,5 @@
 use log::LevelFilter;
+use strum::IntoEnumIterator;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -15,13 +16,20 @@ use tui_textarea::TextArea;
 use crate::{
     debugger::Debugger,
     process::Process,
-    tui::{DebuggerLogScreenState, DebuggerPane, DebuggerState, ScreenMode, TuiState},
+    tui::{DebuggerLogScreenState, DebuggerPane, DebuggerState, LocalsPaneMode, ScreenMode, TuiState},
 };
 
-fn build_watchers_pane(state: &DebuggerState) -> impl Widget {
-    let block = build_bounding_rect(&DebuggerPane::Locals, None, state);
-    Paragraph::new("...")
-        .style(Style::default().fg(Color::Green))
+/// This pane will render the local variables, and various registers.
+fn build_watchers_pane(state: &TuiState)-> impl Widget {
+    let block = build_bounding_rect(&DebuggerPane::Locals, None, &state.debugger_state);
+    let titles = LocalsPaneMode::iter().map(|l| format!("{l}"));
+//    let highlight_style = (Color::default(), self.selected_tab.palette().c700);
+    let selected_tab_index = state.locals_mode as usize;
+    Tabs::new(titles)
+//        .highlight_style(highlight_style)
+        .select(selected_tab_index)
+        .padding("", "")
+        .divider(" | ")
         .block(block)
 }
 
@@ -89,7 +97,7 @@ fn build_bounding_rect<'a>(
 }
 
 fn render_debugger_screen(
-    state: &DebuggerState,
+    state: &TuiState,
     _debugger: &Debugger,
     process: &Process,
     frame: &mut Frame,
@@ -112,7 +120,7 @@ fn render_debugger_screen(
         .split(src);
 
     // source pane
-    let source_pane = build_source_pane(state);
+    let source_pane = build_source_pane(&state.debugger_state);
     frame.render_widget(source_pane, top_pane_chunks[0]);
     // pane with locals / other ...
     let others_pane = build_watchers_pane(state);
@@ -125,7 +133,7 @@ fn render_debugger_screen(
         .constraints([Constraint::Percentage(100)])
         .split(logs);
     // logs/stdout pane
-    let output_pane = build_output_pane(state, process);
+    let output_pane = build_output_pane(&state.debugger_state, process);
     frame.render_widget(output_pane, bottom_pane_chunks[0]);
 
     /////////////////////////////
@@ -135,7 +143,7 @@ fn render_debugger_screen(
         .constraints([Constraint::Percentage(100)])
         .split(minibuffer);
     // command pane
-    let command_pane = build_editor_pane(state);
+    let command_pane = build_editor_pane(&state.debugger_state);
     frame.render_widget(&command_pane, bottom_pane_chunks[0]);
 }
 
@@ -238,7 +246,7 @@ pub fn render_screen(state: &TuiState, debugger: &Debugger, process: &Process, f
 
     match state.screen_mode {
         ScreenMode::MainDebugger => {
-            render_debugger_screen(&state.debugger_state, debugger, process, frame, chunks[1])
+            render_debugger_screen(&state, debugger, process, frame, chunks[1])
         }
         ScreenMode::DebuggerLogging => {
             render_logging_screen(&state.logging_state, frame, chunks[1])

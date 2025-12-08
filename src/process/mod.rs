@@ -18,6 +18,7 @@ use tracing::trace;
 
 use crate::options::{LaunchType, Options};
 use crate::process::inferior::read_inferior_logging;
+use crate::process::registers::{read_all_registers, RegisterSnapshot};
 
 mod inferior;
 mod register_info;
@@ -90,6 +91,7 @@ pub struct Process {
     /// State of the inferior process.
     state: ProcessState,
     target_process: TargetProcess,
+    registers: Option<RegisterSnapshot>,
     /// Captured stdout/stderr from the inferior process.
     /// We reason the inferior output is stored here, rather than in
     /// `Inferior` is that we'd like the output to still be available
@@ -123,6 +125,7 @@ impl Process {
             state: ProcessState::Unknown,
             target_process: TargetProcess::Disconnected,
             inferior_output: Vec::new(),
+            registers: None,
             inferior_tx,
             shutdown_rx,
         }
@@ -201,6 +204,10 @@ impl Process {
             _ => {}
         };
 
+        if matches!(self.state, ProcessState::Stopped) {
+            self.registers = Some(read_all_registers(self.expect_pid())?);
+        }
+        
         Ok(wait_status)
     }
 

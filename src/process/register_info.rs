@@ -5,7 +5,6 @@
 //! Part of what makes this module weird is the intersection of
 //! c structs, `libc` crate, `memoffset` crate, the advice from
 //! "Building a Debugger", and the rust macro system.
-// use anyhow::Result;
 // use libc::{user, user_regs_struct, user_fpregs_struct};
 
 use strum::EnumDiscriminants;
@@ -152,6 +151,12 @@ macro_rules! REGISTER_LIST {
             (R13B, r13, -1, SubGeneralPurpose, W8L);
             (R14B, r14, -1, SubGeneralPurpose, W8L);
             (R15B, r15, -1, SubGeneralPurpose, W8L);
+
+            // define the floating-point registers
+
+
+            // define the debug registers
+            // (DR0, dr0, -1, Debug, W64);
         }
     };
 }

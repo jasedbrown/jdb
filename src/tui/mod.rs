@@ -11,6 +11,7 @@ use ratatui::{
     },
     prelude::CrosstermBackend,
 };
+use strum::{Display, EnumIter, FromRepr};
 use std::{io, time::Duration};
 use tracing::{debug, error, trace};
 use tui_logger::{TuiWidgetEvent, TuiWidgetState};
@@ -179,10 +180,26 @@ pub enum ScreenMode {
     DebuggerLogging,
 }
 
+/// Enum of the panes within the Locals pane.
+#[derive(Default, Clone, Copy, Display, FromRepr, EnumIter)]
+pub enum LocalsPaneMode {
+    #[strum(to_string = "Variables")]
+    Variables,
+    #[strum(to_string = "GP Regs")]
+    #[default]
+    // TODO: default to variables, once I actually get to that point.
+    GeneralPurposeRegisters,
+    #[strum(to_string = "FP Regs")]
+    FloatingPoointRegisters,
+    #[strum(to_string = "Debug Regs")]
+    DebugRegisters,
+}
+
 /// The central nexus of state of the various screens for the TUI.
 struct TuiState {
     debugger_state: DebuggerState,
     logging_state: DebuggerLogScreenState,
+    locals_mode: LocalsPaneMode,
 
     /// The current screen that should be displayed/interacted with.
     screen_mode: ScreenMode,
@@ -194,6 +211,7 @@ impl Default for TuiState {
             debugger_state: Default::default(),
             logging_state: Default::default(),
             screen_mode: ScreenMode::MainDebugger,
+            locals_mode: Default::default(),
         }
     }
 }
