@@ -14,7 +14,7 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use std::{fs, time::Duration};
+use std::fs;
 
 fn init_logging() -> Result<WorkerGuard> {
     // Layer 1: send tracing events to tui-logger’s widget
@@ -104,10 +104,6 @@ fn main() -> Result<()> {
     // if we've exited the main loop, make sure to signal everyone to shutdown
     let _ = tui_shutdown_tx.send(());
     let _ = process_shutdown_tx.send(());
-
-    // a simple wait is sufficient for now, would be nice to have a signal
-    // or join on the thread.
-    std::thread::sleep(Duration::from_millis(400));
 
     tui.exit()?;
     Ok(())

@@ -13,12 +13,12 @@ use std::fs::File;
 use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use tracing::trace;
 
 use crate::options::{LaunchType, Options};
 use crate::process::inferior::read_inferior_logging;
-use crate::process::registers::{read_all_registers, RegisterSnapshot};
+use crate::process::registers::{RegisterSnapshot, read_all_registers};
 
 mod inferior;
 mod register_info;
@@ -103,6 +103,7 @@ pub struct Process {
     inferior_output: Vec<String>,
     inferior_tx: Sender<String>,
     shutdown_rx: Receiver<()>,
+    logging_thread: Option<JoinHandle<()>>,
 }
 
 impl Process {
@@ -128,6 +129,7 @@ impl Process {
             registers: None,
             inferior_tx,
             shutdown_rx,
+            logging_thread: None,
         }
     }
 
@@ -150,9 +152,10 @@ impl Process {
                 let shutdown_rx_clone = self.shutdown_rx.clone();
 
                 // start inferior reader
-                thread::spawn(move || {
+                let logging_thread = thread::spawn(move || {
                     read_inferior_logging(fd_clone, inferior_tx_clone, shutdown_rx_clone);
                 });
+                self.logging_thread = Some(logging_thread);
 
                 let inferior = Inferior {
                     inner: inferior_inner,
@@ -207,7 +210,7 @@ impl Process {
         if matches!(self.state, ProcessState::Stopped) {
             self.registers = Some(read_all_registers(self.expect_pid())?);
         }
-        
+
         Ok(wait_status)
     }
 
@@ -235,6 +238,10 @@ impl Process {
         }
 
         self.target_process.shutdown();
+
+        if let Some(handle) = self.logging_thread.take() {
+            let _ = handle.join();
+        }
 
         Ok(())
     }

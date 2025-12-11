@@ -8,7 +8,8 @@ Based on Sy Brand's ["Building a Debugger"](https://nostarch.com/building-a-debu
 The name is intentionally confusing, overlapping `jdb` with the GOAT debugger `gdb`, the java `jdb` debugger, as well as overlapping with `jdbc`. 
 The last is entertaining as I've spent damn near two decades in databass-land, so yet another "db" project (albeit a debugger this time).
 
-# Details
-The TUI is built with the `ratatui` library.
+# Executing
+`cargo --locked run -- name <full path to executable>`
 
-Access the lower-level linux structs and system calls is handled via the `libc` and `nix` crates.
+# Details
+The TUI is built with the `ratatui` library. Access the lower-level linux structs and system calls is handled via the `libc` and `nix` crates.

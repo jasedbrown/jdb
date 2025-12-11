@@ -11,8 +11,8 @@ use ratatui::{
     },
     prelude::CrosstermBackend,
 };
+use std::{io, thread::JoinHandle, time::Duration};
 use strum::{Display, EnumIter, FromRepr};
-use std::{io, time::Duration};
 use tracing::{debug, error, trace};
 use tui_logger::{TuiWidgetEvent, TuiWidgetState};
 use tui_textarea::TextArea;
@@ -219,6 +219,7 @@ impl Default for TuiState {
 pub struct Tui {
     terminal: Terminal<CrosstermBackend<io::Stdout>>,
     state: TuiState,
+    tui_thread: Option<JoinHandle<()>>,
 }
 
 pub enum EventResult {
@@ -236,16 +237,20 @@ impl Tui {
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend)?;
 
-        std::thread::spawn(move || await_event(tui_tx, shutdown_rx));
+        let tui_thread = std::thread::spawn(move || await_event(tui_tx, shutdown_rx));
 
         Ok(Self {
             terminal,
             state: Default::default(),
+            tui_thread: Some(tui_thread),
         })
     }
 
     /// Restore terminal from TUI state
     pub fn exit(&mut self) -> Result<()> {
+        if let Some(handle) = self.tui_thread.take() {
+            let _ = handle.join();
+        }
         disable_raw_mode()?;
         execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
         self.terminal.show_cursor()?;

@@ -1,5 +1,4 @@
 use log::LevelFilter;
-use strum::IntoEnumIterator;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -8,6 +7,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Tabs, Widget},
 };
+use strum::IntoEnumIterator;
 use tui_logger::{
     LogFormatter, TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiLoggerWidget, TuiWidgetState,
 };
@@ -16,17 +16,19 @@ use tui_textarea::TextArea;
 use crate::{
     debugger::Debugger,
     process::Process,
-    tui::{DebuggerLogScreenState, DebuggerPane, DebuggerState, LocalsPaneMode, ScreenMode, TuiState},
+    tui::{
+        DebuggerLogScreenState, DebuggerPane, DebuggerState, LocalsPaneMode, ScreenMode, TuiState,
+    },
 };
 
 /// This pane will render the local variables, and various registers.
-fn build_watchers_pane(state: &TuiState)-> impl Widget {
+fn build_watchers_pane(state: &TuiState) -> impl Widget {
     let block = build_bounding_rect(&DebuggerPane::Locals, None, &state.debugger_state);
     let titles = LocalsPaneMode::iter().map(|l| format!("{l}"));
-//    let highlight_style = (Color::default(), self.selected_tab.palette().c700);
+    //    let highlight_style = (Color::default(), self.selected_tab.palette().c700);
     let selected_tab_index = state.locals_mode as usize;
     Tabs::new(titles)
-//        .highlight_style(highlight_style)
+        //        .highlight_style(highlight_style)
         .select(selected_tab_index)
         .padding("", "")
         .divider(" | ")
