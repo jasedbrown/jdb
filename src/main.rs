@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use crossbeam_channel::{select, unbounded};
 use jdb::{
@@ -14,7 +14,7 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use std::fs;
+use std::{env, fs, path::PathBuf};
 
 fn init_logging() -> Result<WorkerGuard> {
     // Layer 1: send tracing events to tui-logger’s widget
@@ -22,10 +22,16 @@ fn init_logging() -> Result<WorkerGuard> {
     tui_logger::set_default_level(log::LevelFilter::Trace);
     let tui_layer = tui_logger::TuiTracingSubscriberLayer;
 
+    let state_dir = env::var_os("XDG_STATE_HOME")
+        .and_then(|p| if p.is_empty() { None } else { Some(PathBuf::from(p)) })
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
+        .ok_or_else(|| anyhow!("Neither XDG_STATE_HOME nor HOME is set"))?;
+    let log_dir = state_dir.join("jdb");
+
     // Layer 2: send tracing events to file appender
     // ensure log dir exists
-    fs::create_dir_all("logs")?;
-    let file_appender = tracing_appender::rolling::never("logs", "app.log");
+    fs::create_dir_all(&log_dir)?;
+    let file_appender = tracing_appender::rolling::never(&log_dir, "jdb.log");
     let (file_writer, guard) = non_blocking(file_appender);
     let stdout_layer = fmt::layer()
         .with_target(false)
