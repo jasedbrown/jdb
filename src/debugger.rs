@@ -1,12 +1,10 @@
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 use tracing::trace;
 
 use crate::options::Options;
 use crate::process::Process;
-
-const HISTORY_FILE: &str = "~/.cache/jdb/history";
 
 #[allow(dead_code)]
 pub struct Debugger {
@@ -100,18 +98,31 @@ impl Debugger {
 }
 
 fn resolve_history_file(history_file: &Option<PathBuf>) -> Result<PathBuf> {
-    let file_name = match &history_file {
-        Some(s) => s.to_str().expect("Must be a valid path"),
-        None => HISTORY_FILE,
+    let mut path = match history_file {
+        Some(p) => p.clone(),
+        None => {
+            let cache_dir = env::var_os("XDG_CACHE_HOME")
+                .and_then(|p| {
+                    if p.is_empty() {
+                        None
+                    } else {
+                        Some(PathBuf::from(p))
+                    }
+                })
+                .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+                .ok_or_else(|| anyhow!("Neither XDG_CACHE_HOME nor HOME is set"))?;
+            cache_dir.join("jdb").join("history")
+        }
     };
 
-    let fname = if file_name.starts_with("~/") {
-        dirs::home_dir().map(|home| home.join(&file_name[2..]))
-    } else {
-        PathBuf::from(file_name).into()
-    };
+    if let Some(s) = path.to_str()
+        && s.starts_with("~/")
+    {
+        let home = env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
+        path = PathBuf::from(home).join(&s[2..]);
+    }
 
-    Ok(fname.expect("Must have resolved hsitory file"))
+    Ok(path)
 }
 
 #[derive(Clone, Debug)]

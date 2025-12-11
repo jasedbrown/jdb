@@ -23,7 +23,13 @@ fn init_logging() -> Result<WorkerGuard> {
     let tui_layer = tui_logger::TuiTracingSubscriberLayer;
 
     let state_dir = env::var_os("XDG_STATE_HOME")
-        .and_then(|p| if p.is_empty() { None } else { Some(PathBuf::from(p)) })
+        .and_then(|p| {
+            if p.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(p))
+            }
+        })
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state")))
         .ok_or_else(|| anyhow!("Neither XDG_STATE_HOME nor HOME is set"))?;
     let log_dir = state_dir.join("jdb");
