@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use tracing::trace;
 
+use crate::history::CommandHistory;
 use crate::options::Options;
 use crate::process::Process;
 
@@ -8,33 +9,30 @@ use crate::process::Process;
 pub struct Debugger {
     /// Flag if the program is currently being debugged.
     debugging: bool,
+    /// A log of all the commands executed against the debugger, historical and current.
+    history: CommandHistory,
 }
 
 impl Debugger {
-    pub fn new(_cli_options: &Options) -> Result<Debugger> {
-        Ok(Debugger { debugging: false })
+    pub fn new(cli_options: &Options) -> Result<Debugger> {
+        let history = CommandHistory::new(cli_options)?;
+        Ok(Debugger {
+            debugging: false,
+            history,
+        })
     }
 
     pub fn next(&mut self, command: String, process: &mut Process) -> Result<DispatchResult> {
-        // let command = command;
+        let mut command = command;
         if command.is_empty() {
             trace!("next editor command is empty line, will replay last command");
-            // execute last command, a la gdb but definitely redraw, as well
-            // TODO: currently, if the first thing you do after launching hdb
-            // is press the Enter key (for the last command), we will probably
-            // quit as the history will get the last recorded entry *from the file*
-            // not memory :shrug:
-            // match self
-            //     .line_reader
-            //     .history()
-            //     .get(0, SearchDirection::Reverse)?
-            // {
-            //     Some(l) => line = l.entry.into_owned(),
-            //     None => return Ok(DispatchResult::Normal),
-            // }
+            match self.history.last_command() {
+                Some(cmd) => command = cmd,
+                None => return Ok(DispatchResult::Normal),
+            }
+        } else {
+            self.history.add(&command)?;
         }
-
-        // let _ = self.line_reader.add_history_entry(line.as_str());
 
         let cmd = Command::try_from(command)?;
         let result = self.dispatch_command(cmd, process)?;

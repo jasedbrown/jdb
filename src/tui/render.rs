@@ -248,7 +248,7 @@ pub fn render_screen(state: &TuiState, debugger: &Debugger, process: &Process, f
 
     match state.screen_mode {
         ScreenMode::MainDebugger => {
-            render_debugger_screen(&state, debugger, process, frame, chunks[1])
+            render_debugger_screen(state, debugger, process, frame, chunks[1])
         }
         ScreenMode::DebuggerLogging => {
             render_logging_screen(&state.logging_state, frame, chunks[1])

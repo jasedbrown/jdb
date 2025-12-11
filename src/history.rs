@@ -1,4 +1,6 @@
+use std::fs::OpenOptions;
 use std::fs::exists;
+use std::io::Write;
 use std::path::PathBuf;
 use std::{
     env,
@@ -13,27 +15,15 @@ use crate::options::Options;
 pub struct CommandHistory {
     /// Resolved (absolute) path to the history file.
     history_file: PathBuf,
+
+    // TODO: need a way to set a max size for the in-memory
+    // as well as the disk file size.
     history: Vec<String>,
 }
 
 impl CommandHistory {
     pub fn new(cli_options: &Options) -> Result<Self> {
         let history_file = resolve_history_file(&cli_options.history_file)?;
-
-        // let config = Config::builder()
-        //     .edit_mode(rustyline::EditMode::Emacs)
-        //     .max_history_size(10000)?
-        //     .history_ignore_dups(true)?
-        //     .bell_style(BellStyle::None)
-        //     .tab_stop(4)
-        //     .build();
-        // let mut line_reader = DefaultEditor::with_config(config)?;
-
-        // line_reader.bind_sequence(
-        //     KeyEvent(KeyCode::Char('e'), Modifiers::ALT),
-        //     EventHandler::Simple(Cmd::Interrupt),
-        // );
-
         let history = read_history(&history_file)?;
 
         Ok(Self {
@@ -42,7 +32,19 @@ impl CommandHistory {
         })
     }
 
+    /// Retrieve the last command executed, if any.
+    pub fn last_command(&self) -> Option<String> {
+        self.history.last().cloned()
+    }
+
+    /// Add an entry to the history. The new entry will be ignored
+    /// if it equals the last entry.
     pub fn add(&mut self, cmd: &str) -> Result<()> {
+        // ignore empty strings
+        if cmd.is_empty() {
+            return Ok(());
+        }
+
         let should_append = match self.history.last() {
             Some(last) if *last != cmd => true,
             None => true,
@@ -52,7 +54,14 @@ impl CommandHistory {
         if should_append {
             self.history.push(cmd.to_string());
 
-            // TODO: append to history_file and flush to disk
+            let mut file = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(self.history_file.clone())?;
+            let _ = file.write(cmd.as_bytes())?;
+            let _ = file.write(b"\n")?;
+            // TODO: it would fancy and correct to fsync both the file and the folder
+            // metadata, but here we are ... :shrug:
         }
 
         Ok(())
