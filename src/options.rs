@@ -1,51 +1,25 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
-use clap::{Parser, Subcommand};
-
-#[derive(Clone, Debug, Subcommand)]
-pub enum LaunchType {
-    // Attach to an already executing inferior process.
-    Pid {
-        // PID of an existing process
-        pid: i32,
-    },
-    // Launch and attach to an inferior process.
-    Name {
-        // Path to process executable
-        name: PathBuf,
-    },
-}
-
-impl LaunchType {
-    /// Should the inferior process be terminated when debugging is complete?
-    pub fn terminate_on_exit(&self) -> bool {
-        match self {
-            LaunchType::Pid { .. } => false,
-            LaunchType::Name { .. } => true,
-        }
-    }
-}
+use clap::Parser;
 
 #[derive(Clone, Debug, Parser)]
 #[command(version, about = "JDB (jason's debugger)")]
 pub struct Options {
-    #[command(subcommand)]
-    pub launch_type: LaunchType,
+    pub executable: PathBuf,
+    #[arg(long, short = 'p', required = false)]
+    pub pid: Option<i32>,
+    #[arg(long, required = false)]
     pub history_file: Option<PathBuf>,
 }
 
 impl Options {
     pub fn validate(&self) -> Result<()> {
-        match self.launch_type {
-            LaunchType::Pid { pid } => {
-                if pid <= 0 {
-                    return Err(anyhow!("PID must be greater than zero: {:?}", pid));
-                }
-            }
-            LaunchType::Name { .. } => {}
+        if let Some(pid) = self.pid
+            && pid <= 0
+        {
+            return Err(anyhow!("PID must be greater than zero: {:?}", pid));
         }
-
         Ok(())
     }
 }
