@@ -74,7 +74,11 @@ fn read_history(history_file: &PathBuf) -> Result<Vec<String>> {
         let reader = BufReader::new(file);
         let mut lines = Vec::new();
         for line in reader.lines() {
-            lines.push(line?);
+            let line = line?;
+            // filter any blank lines
+            if !line.is_empty() {
+                lines.push(line);
+            }
         }
         tracing::trace!("history: loaded {:?} entries", lines.len());
         Ok(lines)
