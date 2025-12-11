@@ -8,6 +8,8 @@ Based on Sy Brand's ["Building a Debugger"](https://nostarch.com/building-a-debu
 The name is intentionally confusing, overlapping `jdb` with the GOAT debugger `gdb`, the java `jdb` debugger, as well as overlapping with `jdbc`. 
 The last is entertaining as I've spent damn near two decades in databass-land, so yet another "db" project (albeit a debugger this time).
 
+I've implemented the key bindings from an emacs user PoV. 
+
 # Executing
 `cargo --locked run -- name <full path to executable>`
 

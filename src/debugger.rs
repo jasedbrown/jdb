@@ -1,5 +1,3 @@
-use std::{env, path::PathBuf};
-
 use anyhow::{Result, anyhow};
 use tracing::trace;
 
@@ -10,33 +8,11 @@ use crate::process::Process;
 pub struct Debugger {
     /// Flag if the program is currently being debugged.
     debugging: bool,
-    /// Resolved (absolute) path to the history file.
-    history_file: PathBuf,
 }
 
 impl Debugger {
-    pub fn new(cli_options: &Options) -> Result<Debugger> {
-        // let config = Config::builder()
-        //     .edit_mode(rustyline::EditMode::Emacs)
-        //     .max_history_size(10000)?
-        //     .history_ignore_dups(true)?
-        //     .bell_style(BellStyle::None)
-        //     .tab_stop(4)
-        //     .build();
-        // let mut line_reader = DefaultEditor::with_config(config)?;
-
-        // line_reader.bind_sequence(
-        //     KeyEvent(KeyCode::Char('e'), Modifiers::ALT),
-        //     EventHandler::Simple(Cmd::Interrupt),
-        // );
-
-        let history_file = resolve_history_file(&cli_options.history_file)?;
-        // let _ = line_reader.load_history(&history_file);
-
-        Ok(Debugger {
-            debugging: false,
-            history_file,
-        })
+    pub fn new(_cli_options: &Options) -> Result<Debugger> {
+        Ok(Debugger { debugging: false })
     }
 
     pub fn next(&mut self, command: String, process: &mut Process) -> Result<DispatchResult> {
@@ -63,7 +39,6 @@ impl Debugger {
         let cmd = Command::try_from(command)?;
         let result = self.dispatch_command(cmd, process)?;
 
-        // self.line_reader.append_history(&self.history_file)?;
         Ok(result)
     }
 
@@ -95,34 +70,6 @@ impl Debugger {
     pub fn is_debugging(&self) -> bool {
         self.debugging
     }
-}
-
-fn resolve_history_file(history_file: &Option<PathBuf>) -> Result<PathBuf> {
-    let mut path = match history_file {
-        Some(p) => p.clone(),
-        None => {
-            let cache_dir = env::var_os("XDG_CACHE_HOME")
-                .and_then(|p| {
-                    if p.is_empty() {
-                        None
-                    } else {
-                        Some(PathBuf::from(p))
-                    }
-                })
-                .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
-                .ok_or_else(|| anyhow!("Neither XDG_CACHE_HOME nor HOME is set"))?;
-            cache_dir.join("jdb").join("history")
-        }
-    };
-
-    if let Some(s) = path.to_str()
-        && s.starts_with("~/")
-    {
-        let home = env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
-        path = PathBuf::from(home).join(&s[2..]);
-    }
-
-    Ok(path)
 }
 
 #[derive(Clone, Debug)]
