@@ -68,7 +68,6 @@ pub struct DebuggerState {
     /// The command editor. Since this is a stateful `Widget`, as well as being
     /// the most important Widget in this damn debugger, we keep a long-lived
     /// instance here.
-    // TODO: the static lifetime might be wrong/bullshit ...
     editor: TextArea<'static>,
 }
 
