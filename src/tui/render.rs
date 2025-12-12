@@ -49,7 +49,11 @@ fn build_echo_pane(state: &DebuggerState) -> impl Widget {
 }
 
 fn build_output_pane(state: &DebuggerState, process: &Process) -> impl Widget {
-    let block = build_bounding_rect(&DebuggerPane::Logs, None, state);
+    let mut header = "output".to_string();
+    if let Some(pid) = process.pid() {
+        header.push_str(&format!(" - pid: {:?}", pid));
+    };
+    let block = build_bounding_rect(&DebuggerPane::Logs, Some(header), state);
 
     // TODO: dynamically adjust to the pane size? Kinda depnds on the width of
     // the lines and if they wrap ... :shrug:

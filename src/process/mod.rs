@@ -162,7 +162,7 @@ impl Process {
         Ok(())
     }
 
-    fn pid(&self) -> Option<Pid> {
+    pub fn pid(&self) -> Option<Pid> {
         self.target_process.pid()
     }
 
