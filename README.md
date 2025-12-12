@@ -24,3 +24,17 @@ We log to two places from the debugger:
 
 1. `$XDG_STATE_HOME`/jdb - for standard file logging
 2. The alternate screen in the TUI, "Debugger logging". It capture much of the same information as the log file, but displays it within the running debugger. It uses the ratatui widget [tui-logger](https://github.com/gin66/tui-logger), which is super helpful.
+
+## Key bindings (TUI)
+| Context | Keys | Action |
+| --- | --- | --- |
+| Global | `F1` | Switch to main debugger screen |
+| Global | `F2` | Switch to debugger logging screen |
+| Main screen (normal) | `c` / `e` / `Alt`+`x` | Focus command pane (enter edit mode) |
+| Main screen (normal) | `s` / `l` / `o` | Focus source / locals / logs panes |
+| Main screen (normal) | `Tab` / `Shift`+`Tab` | Cycle pane focus forward/back |
+| Main screen (normal) | `q` | Quit debugger |
+| Main screen (edit) | `Enter` | Submit current line as a command |
+| Main screen (edit) | `Alt`+`x` | Exit edit mode, focus source pane |
+| Logging screen | `q` | Quit debugger (dev escape hatch) |
+| Logging screen | `Space`, `+`, `-`, `h`, `f`, `Esc`, arrows, `PageUp`/`PageDown` | Forwarded to `tui-logger` widget for navigation/filtering |
