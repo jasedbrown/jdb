@@ -16,9 +16,6 @@ I've implemented the key bindings from an emacs user PoV.
 # Details
 The TUI is built with the `ratatui` library. Access the lower-level linux structs and system calls is handled via the `libc` and `nix` crates.
 
-## command entry/editing
-Using the ratatui widget [tui-textarea](https://github.com/rhysd/tui-textarea) for text entry. The current use is still very much in the nacent stage (i.e. lots of work to do)
-
 ## logging
 We log to two places from the debugger:
 

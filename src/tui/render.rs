@@ -11,7 +11,6 @@ use strum::IntoEnumIterator;
 use tui_logger::{
     LogFormatter, TuiLoggerLevelOutput, TuiLoggerSmartWidget, TuiLoggerWidget, TuiWidgetState,
 };
-use tui_textarea::TextArea;
 
 use crate::{
     debugger::Debugger,
@@ -35,17 +34,18 @@ fn build_watchers_pane(state: &TuiState) -> impl Widget {
         .block(block)
 }
 
-fn build_editor_pane(state: &DebuggerState) -> TextArea<'_> {
-    let block = build_bounding_rect(&DebuggerPane::Command, None, state);
+fn build_command_pane(state: &DebuggerState) -> impl Widget {
+    let block = build_bounding_rect(&DebuggerPane::Command, Some("command".to_string()), state);
+    let prompt = Span::styled("jdb> ", Style::default().fg(Color::Cyan).bold());
+    let input = Span::raw(state.current_command().to_string());
+    let line = Line::from(vec![prompt, input]);
 
-    // TODO: render with a line header: jdb >
-    // apparently I can't use tui-textarea for this, but I may need to move away from it at some point.
+    Paragraph::new(line).block(block)
+}
 
-    // TODO: the clone() sucks, but let's get this app going, and then fix up
-    let mut e = state.editor.clone();
-    e.set_block(block);
-    e.set_cursor_line_style(Style::default());
-    e
+fn build_echo_pane(state: &DebuggerState) -> impl Widget {
+    let message = state.last_command_response().unwrap_or("");
+    Paragraph::new(Line::from(message))
 }
 
 fn build_output_pane(state: &DebuggerState, process: &Process) -> impl Widget {
@@ -67,7 +67,7 @@ fn build_output_pane(state: &DebuggerState, process: &Process) -> impl Widget {
 
 fn build_source_pane(state: &DebuggerState) -> impl Widget {
     let block = build_bounding_rect(&DebuggerPane::Source, None, state);
-    Paragraph::new("...")
+    Paragraph::new("println!(\"hello, world\");")
         .style(Style::default().fg(Color::Green))
         .block(block)
 }
@@ -105,12 +105,15 @@ fn render_debugger_screen(
     frame: &mut Frame,
     rect: Rect,
 ) {
+    let minibuffer_len = if state.debugger_state.last_command_response().is_some() { 5 } else { 3 };
+
+
     let [src, logs, minibuffer] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Percentage(60),
             Constraint::Percentage(40),
-            Constraint::Length(5),
+            Constraint::Length(minibuffer_len),
         ])
         .areas(rect);
 
@@ -140,13 +143,22 @@ fn render_debugger_screen(
 
     /////////////////////////////
     // build minbuffer (command and echo area)
-    let bottom_pane_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(100)])
-        .split(minibuffer);
-    // command pane
-    let command_pane = build_editor_pane(&state.debugger_state);
-    frame.render_widget(&command_pane, bottom_pane_chunks[0]);
+    if state.debugger_state.last_command_response().is_some() {
+        let minibuffer_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(2)])
+            .split(minibuffer);
+        // command pane
+        let command_pane = build_command_pane(&state.debugger_state);
+        frame.render_widget(command_pane, minibuffer_chunks[0]);
+        // echo pane
+        let echo_pane = build_echo_pane(&state.debugger_state);
+        frame.render_widget(echo_pane, minibuffer_chunks[1]);
+    } else {
+        // only render the command line when there is no message to show
+        let command_pane = build_command_pane(&state.debugger_state);
+        frame.render_widget(command_pane, minibuffer);
+    }
 }
 
 fn render_logging_screen(state: &DebuggerLogScreenState, frame: &mut Frame, rect: Rect) {

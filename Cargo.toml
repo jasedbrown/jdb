@@ -20,4 +20,3 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tui-logger = { version = "0.17", features = ["tracing-support"] }
-tui-textarea = { version = "0.7", features = ["search"] }

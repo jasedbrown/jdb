@@ -15,7 +15,6 @@ use std::{io, thread::JoinHandle, time::Duration};
 use strum::{Display, EnumIter, FromRepr};
 use tracing::{debug, error, trace};
 use tui_logger::{TuiWidgetEvent, TuiWidgetState};
-use tui_textarea::TextArea;
 
 use crate::{JdbEvent, debugger::Debugger, process::Process, tui::render::render_screen};
 
@@ -65,10 +64,10 @@ pub struct DebuggerState {
     panes: Vec<DebuggerPane>,
     /// The currently focued pane.
     focus_pane_idx: usize,
-    /// The command editor. Since this is a stateful `Widget`, as well as being
-    /// the most important Widget in this damn debugger, we keep a long-lived
-    /// instance here.
-    editor: TextArea<'static>,
+    /// Current command being constructed in the minibuffer.
+    command_input: String,
+    /// Last response emitted after running a command (shown in echo area).
+    last_command_response: Option<String>,
 }
 
 impl Default for DebuggerState {
@@ -80,12 +79,11 @@ impl Default for DebuggerState {
             DebuggerPane::Command,
         ];
 
-        let textarea = TextArea::default();
-
         DebuggerState {
             panes,
             focus_pane_idx: 3,
-            editor: textarea,
+            command_input: String::new(),
+            last_command_response: None,
         }
     }
 }
@@ -118,6 +116,36 @@ impl DebuggerState {
 
     fn in_edit_mode(&self) -> bool {
         self.is_focus(&DebuggerPane::Command)
+    }
+
+    fn push_input(&mut self, ch: char) {
+        self.command_input.push(ch);
+    }
+
+    fn pop_input(&mut self) {
+        self.command_input.pop();
+    }
+
+    fn current_command(&self) -> &str {
+        &self.command_input
+    }
+
+    fn take_command(&mut self) -> String {
+        let command = self.command_input.clone();
+        self.command_input.clear();
+        command
+    }
+
+    fn clear_last_command_response(&mut self) {
+        self.last_command_response = None;
+    }
+
+    fn set_last_command_response(&mut self, message: impl Into<String>) {
+        self.last_command_response = Some(message.into());
+    }
+
+    pub fn last_command_response(&self) -> Option<&str> {
+        self.last_command_response.as_deref()
     }
 }
 
@@ -267,6 +295,12 @@ impl Tui {
         }
     }
 
+    pub fn record_command_response(&mut self, message: impl Into<String>) {
+        self.state
+            .debugger_state
+            .set_last_command_response(message.into());
+    }
+
     fn handle_function_key(&mut self, fkey_num: u8) -> Result<EventResult> {
         // TODO: might need to swap/store some additional state. perhaps if we were in
         // the editor mode, something might need to be stashed (not really sure)??
@@ -310,20 +344,26 @@ fn debugger_screen_key_press(state: &mut DebuggerState, key: KeyEvent) -> Result
         if key.code == KeyCode::Char('x') && key.modifiers == KeyModifiers::ALT {
             state.set_focus(&DebuggerPane::Source);
         } else {
-            // grab the current line, in any, before sending the RETURN event
-            if key.code == KeyCode::Enter {
-                let lines = state.editor.lines();
-                let last_line = lines[lines.len() - 1].clone();
+            match key.code {
+                // grab the current line before sending the RETURN event
+                KeyCode::Enter => {
+                    let command = state.take_command();
+                    let command_is_empty = command.is_empty();
+                    state.clear_last_command_response();
 
-                // arguably if the user is just pressing the return key and no input,
-                // don't bother recording the second enter ...
-                if !last_line.is_empty() {
-                    assert!(state.editor.input(key));
+                    // preserve empty-command detection for downstream handling
+                    if command_is_empty {
+                        trace!("Editor command is empty, will replay last command");
+                    }
+                    ret_code = EventResult::Editor { command };
                 }
-
-                ret_code = EventResult::Editor { command: last_line };
-            } else {
-                state.editor.input(key);
+                KeyCode::Backspace => {
+                    state.pop_input();
+                }
+                KeyCode::Char(c) => {
+                    state.push_input(c);
+                }
+                _ => {}
             }
         }
     } else {

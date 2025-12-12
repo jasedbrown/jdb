@@ -97,9 +97,13 @@ fn main() -> Result<()> {
                                         // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
                                     }
                                     Ok(DispatchResult::Exit) => {
+                                        tui.record_command_response("exiting debugger");
                                         break;
                                     }
-                                    Err(e) => error!("Error: {:?}", e),
+                                    Err(e) => {
+                                        tui.record_command_response(format!("error: {e}"));
+                                        error!("Error: {:?}", e)
+                                    }
                                 }
                             }
                             Ok(EventResult::Quit) => {
