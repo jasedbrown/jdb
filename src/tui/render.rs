@@ -37,7 +37,8 @@ fn build_watchers_pane(state: &TuiState) -> impl Widget {
 fn build_command_pane(state: &DebuggerState) -> impl Widget {
     let block = build_bounding_rect(&DebuggerPane::Command, Some("command".to_string()), state);
     let prompt = Span::styled("jdb> ", Style::default().fg(Color::Cyan).bold());
-    let input = Span::raw(state.current_command().to_string());
+    let input =
+        Span::raw(state.current_command().to_string()).style(Style::default().fg(Color::White));
     let line = Line::from(vec![prompt, input]);
 
     Paragraph::new(line).block(block)
@@ -58,13 +59,10 @@ fn build_output_pane(state: &DebuggerState, process: &Process) -> impl Widget {
     // TODO: dynamically adjust to the pane size? Kinda depnds on the width of
     // the lines and if they wrap ... :shrug:
     let log_lines = process.last_n_log_lines(16);
-    let text_lines: Vec<Line> = log_lines
-        .iter()
-        .map(|line| line.as_str().into())
-        .collect();
+    let text_lines: Vec<Line> = log_lines.iter().map(|line| line.as_str().into()).collect();
 
     Paragraph::new(text_lines)
-        .style(Style::default().fg(Color::Green))
+        .style(Style::default().fg(Color::White))
         .block(block)
 }
 
@@ -108,8 +106,11 @@ fn render_debugger_screen(
     frame: &mut Frame,
     rect: Rect,
 ) {
-    let minibuffer_len = if state.debugger_state.last_command_response().is_some() { 5 } else { 3 };
-
+    let minibuffer_len = if state.debugger_state.last_command_response().is_some() {
+        5
+    } else {
+        3
+    };
 
     let [src, logs, minibuffer] = Layout::default()
         .direction(Direction::Vertical)
