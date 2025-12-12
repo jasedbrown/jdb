@@ -57,10 +57,9 @@ fn build_output_pane(state: &DebuggerState, process: &Process) -> impl Widget {
 
     // TODO: dynamically adjust to the pane size? Kinda depnds on the width of
     // the lines and if they wrap ... :shrug:
-    let log_lines = process.last_n_log_lines(10);
+    let log_lines = process.last_n_log_lines(16);
     let text_lines: Vec<Line> = log_lines
         .iter()
-        .rev()
         .map(|line| line.as_str().into())
         .collect();
 
