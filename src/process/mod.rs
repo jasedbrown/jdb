@@ -260,7 +260,7 @@ fn attach_pid(pid: i32) -> Result<Pid> {
     Ok(p)
 }
 
-fn launch_file(name: &Path, _args: Vec<String>) -> Result<Option<InferiorInner>> {
+fn launch_file(name: &Path, args: Vec<String>) -> Result<Option<InferiorInner>> {
     let pty = openpty(
         Some(&Winsize {
             ws_row: 24,
@@ -302,7 +302,14 @@ fn launch_file(name: &Path, _args: Vec<String>) -> Result<Option<InferiorInner>>
             ptrace::traceme()?;
 
             let filename = CString::new(name.as_os_str().as_bytes())?;
-            let cstr_args: Vec<&CStr> = vec![];
+
+            // Build argv as &[&CStr] while retaining owned CString storage.
+            let mut cstr_storage = Vec::with_capacity(args.len() + 1);
+            cstr_storage.push(filename.clone());
+            for arg in args {
+                cstr_storage.push(CString::new(arg)?);
+            }
+            let cstr_args: Vec<&CStr> = cstr_storage.iter().map(|s| s.as_c_str()).collect();
 
             let _ = execvp(filename.as_c_str(), &cstr_args);
             Ok(None)
