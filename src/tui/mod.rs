@@ -208,6 +208,7 @@ pub enum ScreenMode {
 }
 
 /// Enum of the panes within the Locals pane.
+#[allow(dead_code)]
 #[derive(Default, Clone, Copy, Display, FromRepr, EnumIter)]
 pub enum LocalsPaneMode {
     #[strum(to_string = "Variables")]
@@ -226,7 +227,6 @@ pub enum LocalsPaneMode {
 struct TuiState {
     debugger_state: DebuggerState,
     logging_state: DebuggerLogScreenState,
-    locals_mode: LocalsPaneMode,
 
     /// The current screen that should be displayed/interacted with.
     screen_mode: ScreenMode,
@@ -238,7 +238,6 @@ impl Default for TuiState {
             debugger_state: Default::default(),
             logging_state: Default::default(),
             screen_mode: ScreenMode::MainDebugger,
-            locals_mode: Default::default(),
         }
     }
 }
