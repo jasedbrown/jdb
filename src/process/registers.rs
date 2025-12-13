@@ -104,14 +104,14 @@ pub fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
     let gp_reg = getregset::<regset::NT_PRSTATUS>(pid).unwrap();
     let fp_reg = getregset::<regset::NT_PRFPREG>(pid).unwrap();
 
-    let mut debug_regs = [0; 8];
     // read out the debug registers
+    let mut debug_regs = [0; 8];
     let base_regs_offset = offset_of!(user, u_debugreg);
-    for i in 0..debug_regs.len() {
+    for (i, e) in debug_regs.iter_mut().enumerate() {
         // TODO: don't hardcode the offset
         let offset = base_regs_offset + (i * 8);
         let reg = read_user(pid, offset as _).unwrap();
-        debug_regs[i] = reg as u64;
+        *e = reg as u64;
     }
 
     Ok(RegisterSnapshot::new(pid, gp_reg, fp_reg, debug_regs))

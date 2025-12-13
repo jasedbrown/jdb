@@ -243,7 +243,6 @@ impl Process {
     }
 
     pub fn receive_inferior_logging(&mut self, output: String) {
-        trace!(?output, "inferior log event");
         output.lines().for_each(|l| {
             if !l.is_empty() {
                 self.inferior_output.push(l.to_string());
