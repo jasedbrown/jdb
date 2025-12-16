@@ -8,14 +8,14 @@ use nix::unistd::Pid;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use crate::process::register_info::{REGISTERS_INFO, Register, RegisterInfo, RegisterValue};
+use crate::process::register_info::{Register, RegisterInfo, RegisterValue, registers_info};
 
 // ugh, phf will not work as the keys must be of a limited set of types.
 // Just use lazy/once_cell to bulid a fucking map
 static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
     let mut regs = HashMap::new();
 
-    REGISTERS_INFO.iter().for_each(|r| {
+    registers_info().iter().for_each(|r| {
         regs.insert(r.register, r.clone());
     });
 
