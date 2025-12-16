@@ -37,8 +37,8 @@ enum RegisterWidth {
 }
 
 impl RegisterWidth {
-    /// Register width in bytes.
-    const fn width(&self) -> usize {
+    /// Register width in bits.
+    const fn bits(&self) -> usize {
         match self {
             RegisterWidth::W64 => 64,
             RegisterWidth::W32 => 32,
@@ -47,12 +47,16 @@ impl RegisterWidth {
         }
     }
 
-    /// Offset from the 0th byte of the `user` struct.
-    /// Required for `read_user()` and `write_user()`.
+    /// Register width in bytes.
+    const fn bytes(&self) -> usize {
+        self.bits() / 8
+    }
+
+    /// Offset from the start of the underlying storage, used for subregisters.
     const fn offset(&self) -> usize {
         match self {
-            RegisterWidth::W8L => 1,
-            RegisterWidth::W8H | RegisterWidth::W16 | RegisterWidth::W32 | RegisterWidth::W64 => 0,
+            RegisterWidth::W8H => 1,
+            RegisterWidth::W8L | RegisterWidth::W16 | RegisterWidth::W32 | RegisterWidth::W64 => 0,
         }
     }
 }
@@ -64,99 +68,107 @@ macro_rules! REGISTER_LIST {
         $macro! {
             // (EnumVariant, struct_field, dwarf_regno, reg_type, bit-width)
             // 64-bit registers
-            (RAX, rax, 0, GeneralPurpose, W64);
-            (RDX, rdx, 1, GeneralPurpose, W64);
-            (RCX, rcx, 2, GeneralPurpose, W64);
-            (RBX, rbx, 3, GeneralPurpose, W64);
-            (RSI, rsi, 4, GeneralPurpose, W64);
-            (RDI, rdi, 5, GeneralPurpose, W64);
-            (RBP, rbp, 6, GeneralPurpose, W64);
-            (RSP, rsp, 7, GeneralPurpose, W64);
-            (R8, r8, 8, GeneralPurpose, W64);
-            (R9, r9, 9, GeneralPurpose, W64);
-            (R10, r10, 10, GeneralPurpose, W64);
-            (R11, r11, 11, GeneralPurpose, W64);
-            (R12, r12, 12, GeneralPurpose, W64);
-            (R13, r13, 13, GeneralPurpose, W64);
-            (R14, r14, 14, GeneralPurpose, W64);
-            (R15, r15, 15, GeneralPurpose, W64);
-            (RIP, rip, 16, GeneralPurpose, W64);
-            (EFLAGS, eflags, 49, GeneralPurpose, W64);
-            (CS, cs, 51, GeneralPurpose, W64);
-            (FS, fs, 54, GeneralPurpose, W64);
-            (GS, gs, 55, GeneralPurpose, W64);
-            (SS, ss, 52, GeneralPurpose, W64);
-            (DS, ds, 53, GeneralPurpose, W64);
-            (ES, es, 50, GeneralPurpose, W64);
+            (RAX, Regs(rax), 0, GeneralPurpose, W64);
+            (RDX, Regs(rdx), 1, GeneralPurpose, W64);
+            (RCX, Regs(rcx), 2, GeneralPurpose, W64);
+            (RBX, Regs(rbx), 3, GeneralPurpose, W64);
+            (RSI, Regs(rsi), 4, GeneralPurpose, W64);
+            (RDI, Regs(rdi), 5, GeneralPurpose, W64);
+            (RBP, Regs(rbp), 6, GeneralPurpose, W64);
+            (RSP, Regs(rsp), 7, GeneralPurpose, W64);
+            (R8, Regs(r8), 8, GeneralPurpose, W64);
+            (R9, Regs(r9), 9, GeneralPurpose, W64);
+            (R10, Regs(r10), 10, GeneralPurpose, W64);
+            (R11, Regs(r11), 11, GeneralPurpose, W64);
+            (R12, Regs(r12), 12, GeneralPurpose, W64);
+            (R13, Regs(r13), 13, GeneralPurpose, W64);
+            (R14, Regs(r14), 14, GeneralPurpose, W64);
+            (R15, Regs(r15), 15, GeneralPurpose, W64);
+            (RIP, Regs(rip), 16, GeneralPurpose, W64);
+            (EFLAGS, Regs(eflags), 49, GeneralPurpose, W64);
+            (CS, Regs(cs), 51, GeneralPurpose, W64);
+            (FS, Regs(fs), 54, GeneralPurpose, W64);
+            (GS, Regs(gs), 55, GeneralPurpose, W64);
+            (SS, Regs(ss), 52, GeneralPurpose, W64);
+            (DS, Regs(ds), 53, GeneralPurpose, W64);
+            (ES, Regs(es), 50, GeneralPurpose, W64);
 
             // ptrace exposes this as the way to get the ID of a syscall.
             // it has no dwarf id.
-            (ORIGRAX, orig_rax, -1, GeneralPurpose, W64);
+            (ORIGRAX, Regs(orig_rax), -1, GeneralPurpose, W64);
 
             // 32-bit subregisters. no dwarf IDs
-            (EAX, rax, -1, SubGeneralPurpose, W32);
-            (EDX, rdx, -1, SubGeneralPurpose, W32);
-            (ECX, rcx, -1, SubGeneralPurpose, W32);
-            (EBX, rbx, -1, SubGeneralPurpose, W32);
-            (ESI, rsi, -1, SubGeneralPurpose, W32);
-            (EDI, rdi, -1, SubGeneralPurpose, W32);
-            (EBP, rbp, -1, SubGeneralPurpose, W32);
-            (ESP, rsp, -1, SubGeneralPurpose, W32);
-            (R8D, r8, -1, SubGeneralPurpose, W32);
-            (R9D, r9, -1, SubGeneralPurpose, W32);
-            (R10D, r10, -1, SubGeneralPurpose, W32);
-            (R11D, r11, -1, SubGeneralPurpose, W32);
-            (R12D, r12, -1, SubGeneralPurpose, W32);
-            (R13D, r13, -1, SubGeneralPurpose, W32);
-            (R14D, r14, -1, SubGeneralPurpose, W32);
-            (R15D, r15, -1, SubGeneralPurpose, W32);
+            (EAX, Regs(rax), -1, SubGeneralPurpose, W32);
+            (EDX, Regs(rdx), -1, SubGeneralPurpose, W32);
+            (ECX, Regs(rcx), -1, SubGeneralPurpose, W32);
+            (EBX, Regs(rbx), -1, SubGeneralPurpose, W32);
+            (ESI, Regs(rsi), -1, SubGeneralPurpose, W32);
+            (EDI, Regs(rdi), -1, SubGeneralPurpose, W32);
+            (EBP, Regs(rbp), -1, SubGeneralPurpose, W32);
+            (ESP, Regs(rsp), -1, SubGeneralPurpose, W32);
+            (R8D, Regs(r8), -1, SubGeneralPurpose, W32);
+            (R9D, Regs(r9), -1, SubGeneralPurpose, W32);
+            (R10D, Regs(r10), -1, SubGeneralPurpose, W32);
+            (R11D, Regs(r11), -1, SubGeneralPurpose, W32);
+            (R12D, Regs(r12), -1, SubGeneralPurpose, W32);
+            (R13D, Regs(r13), -1, SubGeneralPurpose, W32);
+            (R14D, Regs(r14), -1, SubGeneralPurpose, W32);
+            (R15D, Regs(r15), -1, SubGeneralPurpose, W32);
 
             // 16-bit subregisters. no dwarf IDs
-            (AX, rax, -1, SubGeneralPurpose, W16);
-            (DX, rdx, -1, SubGeneralPurpose, W16);
-            (CX, rcx, -1, SubGeneralPurpose, W16);
-            (SI, rsi, -1, SubGeneralPurpose, W16);
-            (DI, rdi, -1, SubGeneralPurpose, W16);
-            (BP, rbp, -1, SubGeneralPurpose, W16);
-            (SP, rsp, -1, SubGeneralPurpose, W16);
-            (R8W, r8, -1, SubGeneralPurpose, W16);
-            (R9W, r9, -1, SubGeneralPurpose, W16);
-            (R10W, r10, -1, SubGeneralPurpose, W16);
-            (R11W, r11, -1, SubGeneralPurpose, W16);
-            (R12W, r12, -1, SubGeneralPurpose, W16);
-            (R13W, r13, -1, SubGeneralPurpose, W16);
-            (R14W, r14, -1, SubGeneralPurpose, W16);
-            (R15W, r15, -1, SubGeneralPurpose, W16);
+            (AX, Regs(rax), -1, SubGeneralPurpose, W16);
+            (DX, Regs(rdx), -1, SubGeneralPurpose, W16);
+            (CX, Regs(rcx), -1, SubGeneralPurpose, W16);
+            (SI, Regs(rsi), -1, SubGeneralPurpose, W16);
+            (DI, Regs(rdi), -1, SubGeneralPurpose, W16);
+            (BP, Regs(rbp), -1, SubGeneralPurpose, W16);
+            (SP, Regs(rsp), -1, SubGeneralPurpose, W16);
+            (R8W, Regs(r8), -1, SubGeneralPurpose, W16);
+            (R9W, Regs(r9), -1, SubGeneralPurpose, W16);
+            (R10W, Regs(r10), -1, SubGeneralPurpose, W16);
+            (R11W, Regs(r11), -1, SubGeneralPurpose, W16);
+            (R12W, Regs(r12), -1, SubGeneralPurpose, W16);
+            (R13W, Regs(r13), -1, SubGeneralPurpose, W16);
+            (R14W, Regs(r14), -1, SubGeneralPurpose, W16);
+            (R15W, Regs(r15), -1, SubGeneralPurpose, W16);
 
             // 8-bit high subregisters. no dwarf IDs
-            (AH, rax, -1, SubGeneralPurpose, W8H);
-            (DH, rdx, -1, SubGeneralPurpose, W8H);
-            (CH, rcx, -1, SubGeneralPurpose, W8H);
-            (BH, rbx, -1, SubGeneralPurpose, W8H);
+            (AH, Regs(rax), -1, SubGeneralPurpose, W8H);
+            (DH, Regs(rdx), -1, SubGeneralPurpose, W8H);
+            (CH, Regs(rcx), -1, SubGeneralPurpose, W8H);
+            (BH, Regs(rbx), -1, SubGeneralPurpose, W8H);
 
             // 8-bit low subregisters. no dwarf IDs
-            (AL, rax, -1, SubGeneralPurpose, W8L);
-            (DL, rdx, -1, SubGeneralPurpose, W8L);
-            (CL, rcx, -1, SubGeneralPurpose, W8L);
-            (BL, rbx, -1, SubGeneralPurpose, W8L);
-            (SIL, rsi, -1, SubGeneralPurpose, W8L);
-            (DIL, rdi, -1, SubGeneralPurpose, W8L);
-            (BPL, rbp, -1, SubGeneralPurpose, W8L);
-            (SPL, rsp, -1, SubGeneralPurpose, W8L);
-            (R8B, r8, -1, SubGeneralPurpose, W8L);
-            (R9B, r9, -1, SubGeneralPurpose, W8L);
-            (R10B, r10, -1, SubGeneralPurpose, W8L);
-            (R11B, r11, -1, SubGeneralPurpose, W8L);
-            (R12B, r12, -1, SubGeneralPurpose, W8L);
-            (R13B, r13, -1, SubGeneralPurpose, W8L);
-            (R14B, r14, -1, SubGeneralPurpose, W8L);
-            (R15B, r15, -1, SubGeneralPurpose, W8L);
+            (AL, Regs(rax), -1, SubGeneralPurpose, W8L);
+            (DL, Regs(rdx), -1, SubGeneralPurpose, W8L);
+            (CL, Regs(rcx), -1, SubGeneralPurpose, W8L);
+            (BL, Regs(rbx), -1, SubGeneralPurpose, W8L);
+            (SIL, Regs(rsi), -1, SubGeneralPurpose, W8L);
+            (DIL, Regs(rdi), -1, SubGeneralPurpose, W8L);
+            (BPL, Regs(rbp), -1, SubGeneralPurpose, W8L);
+            (SPL, Regs(rsp), -1, SubGeneralPurpose, W8L);
+            (R8B, Regs(r8), -1, SubGeneralPurpose, W8L);
+            (R9B, Regs(r9), -1, SubGeneralPurpose, W8L);
+            (R10B, Regs(r10), -1, SubGeneralPurpose, W8L);
+            (R11B, Regs(r11), -1, SubGeneralPurpose, W8L);
+            (R12B, Regs(r12), -1, SubGeneralPurpose, W8L);
+            (R13B, Regs(r13), -1, SubGeneralPurpose, W8L);
+            (R14B, Regs(r14), -1, SubGeneralPurpose, W8L);
+            (R15B, Regs(r15), -1, SubGeneralPurpose, W8L);
 
             // define the floating-point registers
 
 
-            // define the debug registers
-            // (DR0, dr0, -1, Debug, W64);
+            // define the debug registers - overload the "struct field"
+            // with position in the debug reg array
+            (DR0, UserArray(u_debugreg, 0), -1, Debug, W64);
+            (DR1, UserArray(u_debugreg, 1), -1, Debug, W64);
+            (DR2, UserArray(u_debugreg, 2), -1, Debug, W64);
+            (DR3, UserArray(u_debugreg, 3), -1, Debug, W64);
+            (DR4, UserArray(u_debugreg, 4), -1, Debug, W64);
+            (DR5, UserArray(u_debugreg, 5), -1, Debug, W64);
+            (DR6, UserArray(u_debugreg, 6), -1, Debug, W64);
+            (DR7, UserArray(u_debugreg, 7), -1, Debug, W64);
         }
     };
 }
@@ -167,7 +179,7 @@ macro_rules! REGISTER_LIST {
 /// currently only supporting x86_64 and what i find in /usr/include/sys/user.h
 /// as i think that's all that's exposed in `nix::ptrace`
 macro_rules! DEFINE_ENUM {
-    ( $( ($register:ident, $field:ident, $dwarf:expr, $reg_type:ident, $width:expr); )* ) => {
+    ( $( ($register:ident, $location_kind:ident($($location_args:tt)*), $dwarf:expr, $reg_type:ident, $width:expr); )* ) => {
         #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
         #[allow(clippy::upper_case_acronyms)]
         pub enum Register {
@@ -193,15 +205,15 @@ pub struct RegisterInfo {
 }
 
 macro_rules! DEFINE_INFO {
-    ( $( ($register:ident, $field:ident, $dwarf:expr, $reg_type:ident, $width:ident); )* ) => {
+    ( $( ($register:ident, $location_kind:ident($($location_args:tt)*), $dwarf:expr, $reg_type:ident, $width:ident); )* ) => {
         pub const REGISTERS_INFO: &[RegisterInfo] = &[
             $(
                 RegisterInfo {
                     register: Register::$register,
-                    name: stringify!($field),
+                    name: DEFINE_INFO!(@name $location_kind($($location_args)*)),
                     dwarf_id: $dwarf,
-                    offset: DEFINE_INFO!(@field_offset $reg_type, $field),
-                    size: RegisterWidth::$width.width(),
+                    offset: DEFINE_INFO!(@field_offset $location_kind($($location_args)*), $width),
+                    size: RegisterWidth::$width.bytes(),
                     register_type: RegisterType::$reg_type,
                     format: RegisterFormat::Uint,
                 },
@@ -209,19 +221,47 @@ macro_rules! DEFINE_INFO {
         ];
     };
 
-    // Helper rules to select the correct struct type based on RegisterType
-    (@field_offset GeneralPurpose, $field:ident) => {
+    (@name Regs($field:ident)) => {
+        stringify!($field)
+    };
+    (@name RegsArray($field:ident, $index:expr)) => {
+        concat!(stringify!($field), "[", stringify!($index), "]")
+    };
+    (@name Fpu($field:ident)) => {
+        stringify!($field)
+    };
+    (@name FpuArray($field:ident, $index:expr)) => {
+        concat!(stringify!($field), "[", stringify!($index), "]")
+    };
+    (@name User($field:ident)) => {
+        stringify!($field)
+    };
+    (@name UserArray($field:ident, $index:expr)) => {
+        concat!(stringify!($field), "[", stringify!($index), "]")
+    };
+
+    // Helper rules to select the correct struct type based on Register storage
+    (@field_offset Regs($field:ident), $width:ident) => {
         memoffset::offset_of!(libc::user, regs) + memoffset::offset_of!(libc::user_regs_struct, $field)
     };
-    (@field_offset SubGeneralPurpose, $field:ident) => {
-        memoffset::offset_of!(libc::user, regs) + memoffset::offset_of!(libc::user_regs_struct, $field)
+    (@field_offset RegsArray($field:ident, $index:expr), $width:ident) => {
+        memoffset::offset_of!(libc::user, regs)
+            + memoffset::offset_of!(libc::user_regs_struct, $field)
+            + ($index * RegisterWidth::$width.bytes())
     };
-    (@field_offset FloatingPoint, $field:ident) => {
+    (@field_offset Fpu($field:ident), $width:ident) => {
         memoffset::offset_of!(libc::user, i387) + memoffset::offset_of!(libc::user_fpregs_struct, $field)
     };
-    (@field_offset Debug, $field:ident) => {
-        // For debug registers, they're stored as an array, so we use the field as-is
-        memoffset::offset_of!(libc::user, u_debugreg)
+    (@field_offset FpuArray($field:ident, $index:expr), $width:ident) => {
+        memoffset::offset_of!(libc::user, i387)
+            + memoffset::offset_of!(libc::user_fpregs_struct, $field)
+            + ($index * RegisterWidth::$width.bytes())
+    };
+    (@field_offset User($field:ident), $width:ident) => {
+        memoffset::offset_of!(libc::user, $field)
+    };
+    (@field_offset UserArray($field:ident, $index:expr), $width:ident) => {
+        memoffset::offset_of!(libc::user, $field) + ($index * RegisterWidth::$width.bytes())
     };
 }
 
