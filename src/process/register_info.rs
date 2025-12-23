@@ -21,7 +21,7 @@ pub enum RegisterValue {
     Int8(i8),
     Int16(i16),
     Int32(i32),
-    Int64(i64),    
+    Int64(i64),
 
     Float(f32),
     Double(f64),
