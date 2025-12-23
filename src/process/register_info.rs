@@ -14,8 +14,28 @@ use strum::EnumDiscriminants;
 #[derive(Clone, Copy, Debug, EnumDiscriminants)]
 #[strum_discriminants(name(RegisterFormat))]
 pub enum RegisterValue {
-    // placeholder variants ....
-    Uint(u64),
+    Uint8(u8),
+    Uint16(u16),
+    Uint32(u32),
+    Uint64(u64),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),    
+
+    Float(f32),
+    Double(f64),
+
+    /// On x86, most C compilers implement long double as the 80-bit extended precision type
+    /// (generally stored as 12 or 16 bytes to maintain data structure alignment). [0]
+    ///
+    /// Typically just for the `st0` - `st7` registers. These are the older
+    /// x87 registers. There are 8 of them, 80-bits each.
+    ///
+    /// [0] https://en.wikipedia.org/wiki/Long_double
+    LongDouble([u8; 10]),
+    Byte64([u8; 8]),
+    Byte128([u8; 16]),
 }
 
 #[derive(Clone, Copy, Debug, Hash)]
@@ -371,6 +391,125 @@ pub struct RegisterInfo {
 
 impl RegisterInfo {
     fn from_decl(decl: &RegisterDecl) -> Self {
+        let format = match decl.register {
+            Register::ST0
+            | Register::ST1
+            | Register::ST2
+            | Register::ST3
+            | Register::ST4
+            | Register::ST5
+            | Register::ST6
+            | Register::ST7 => RegisterFormat::LongDouble,
+            Register::XMM0
+            | Register::XMM1
+            | Register::XMM2
+            | Register::XMM3
+            | Register::XMM4
+            | Register::XMM5
+            | Register::XMM6
+            | Register::XMM7
+            | Register::XMM8
+            | Register::XMM9
+            | Register::XMM10
+            | Register::XMM11
+            | Register::XMM12
+            | Register::XMM13
+            | Register::XMM14
+            | Register::XMM15 => RegisterFormat::Byte64,
+            Register::RAX
+            | Register::RDX
+            | Register::RCX
+            | Register::RBX
+            | Register::RSI
+            | Register::RDI
+            | Register::RBP
+            | Register::RSP
+            | Register::R8
+            | Register::R9
+            | Register::R10
+            | Register::R11
+            | Register::R12
+            | Register::R13
+            | Register::R14
+            | Register::R15
+            | Register::RIP
+            | Register::EFLAGS
+            | Register::CS
+            | Register::FS
+            | Register::GS
+            | Register::SS
+            | Register::DS
+            | Register::ES
+            | Register::ORIGRAX
+            | Register::EAX
+            | Register::EDX
+            | Register::ECX
+            | Register::EBX
+            | Register::ESI
+            | Register::EDI
+            | Register::EBP
+            | Register::ESP
+            | Register::R8D
+            | Register::R9D
+            | Register::R10D
+            | Register::R11D
+            | Register::R12D
+            | Register::R13D
+            | Register::R14D
+            | Register::R15D
+            | Register::AX
+            | Register::DX
+            | Register::CX
+            | Register::SI
+            | Register::DI
+            | Register::BP
+            | Register::SP
+            | Register::R8W
+            | Register::R9W
+            | Register::R10W
+            | Register::R11W
+            | Register::R12W
+            | Register::R13W
+            | Register::R14W
+            | Register::R15W
+            | Register::AH
+            | Register::DH
+            | Register::CH
+            | Register::BH
+            | Register::AL
+            | Register::DL
+            | Register::CL
+            | Register::BL
+            | Register::SIL
+            | Register::DIL
+            | Register::BPL
+            | Register::SPL
+            | Register::R8B
+            | Register::R9B
+            | Register::R10B
+            | Register::R11B
+            | Register::R12B
+            | Register::R13B
+            | Register::R14B
+            | Register::R15B
+            | Register::FCW
+            | Register::FSW
+            | Register::FTW
+            | Register::FOP
+            | Register::FIP
+            | Register::FDP
+            | Register::MXCSR
+            | Register::MXCSR_MASK
+            | Register::DR0
+            | Register::DR1
+            | Register::DR2
+            | Register::DR3
+            | Register::DR4
+            | Register::DR5
+            | Register::DR6
+            | Register::DR7 => RegisterFormat::Uint64,
+        };
+
         Self {
             register: decl.register,
             name: decl.name,
@@ -378,7 +517,7 @@ impl RegisterInfo {
             offset: decl.loc.offset(decl.width),
             size: decl.width.bytes(),
             register_type: decl.reg_type,
-            format: RegisterFormat::Uint,
+            format,
         }
     }
 }
