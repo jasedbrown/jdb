@@ -246,7 +246,6 @@ pub enum Location {
     Regs(RegsField),
     Fpu(FpuField),
     FpuArray(FpuArrayField, usize),
-    User(UserField),
     UserArray(UserField, usize),
 }
 
@@ -355,6 +354,14 @@ impl FpuArrayField {
             FpuArrayField::Xmm => memoffset::offset_of!(libc::user_fpregs_struct, xmm_space),
         }
     }
+
+    /// Size, in bytes, of a single slot in the backing array.
+    /// x87/MMX and XMM entries each occupy 16 bytes.
+    const fn stride(self) -> usize {
+        match self {
+            FpuArrayField::St | FpuArrayField::Xmm => 16,
+        }
+    }
 }
 
 /// Miscellaneous fields within `libc::user`.
@@ -377,9 +384,8 @@ impl Location {
             Location::Regs(field) => memoffset::offset_of!(libc::user, regs) + field.offset(),
             Location::Fpu(field) => memoffset::offset_of!(libc::user, i387) + field.offset(),
             Location::FpuArray(field, index) => {
-                memoffset::offset_of!(libc::user, i387) + field.offset() + (index * width.bytes())
+                memoffset::offset_of!(libc::user, i387) + field.offset() + (index * field.stride())
             }
-            Location::User(field) => field.offset(),
             Location::UserArray(field, index) => field.offset() + (index * width.bytes()),
         };
 
@@ -411,8 +417,10 @@ pub struct RegisterInfo {
     pub offset: usize,
     /// Size in bytes of the register's value.
     pub size: usize,
+    pub width: RegisterWidth,
     pub register_type: RegisterType,
     pub format: RegisterFormat,
+    pub loc: Location,
 }
 
 impl From<&RegisterDecl> for RegisterInfo {
@@ -423,8 +431,10 @@ impl From<&RegisterDecl> for RegisterInfo {
             dwarf_id: decl.dwarf,
             offset: decl.loc.offset(decl.width),
             size: decl.width.bytes(),
+            width: decl.width,
             register_type: decl.reg_type,
             format: decl.format,
+            loc: decl.loc,
         }
     }
 }

@@ -18,6 +18,7 @@ use tracing::trace;
 
 use crate::options::Options;
 use crate::process::inferior::read_inferior_logging;
+use crate::process::register_info::{Register, RegisterValue};
 use crate::process::registers::{RegisterSnapshot, read_all_registers};
 
 mod inferior;
@@ -253,6 +254,15 @@ impl Process {
     pub fn last_n_log_lines(&self, n: usize) -> &[String] {
         let len = self.inferior_output.len().saturating_sub(n);
         &self.inferior_output[len..]
+    }
+
+    pub fn read_register(&self, register: Register) -> Option<RegisterValue> {
+        // TODO: maybe add check to ensure target process is indeed running/being debugged,
+        // but perhaps having self.registers may be sufficient
+
+        self.registers
+            .as_ref()
+            .map(|snapshot| snapshot.read(&register))
     }
 }
 
