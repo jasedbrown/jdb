@@ -51,7 +51,7 @@ impl RegisterSnapshot {
         }
     }
 
-    pub fn get_value(&self, register: &Register) -> RegisterValue {
+    pub fn read(&self, register: &Register) -> RegisterValue {
         // helpers for floating-point layouts
         fn take_long_double(st_space: &[u32; 32], idx: usize) -> RegisterValue {
             let mut bytes = [0u8; 16];
@@ -63,6 +63,16 @@ impl RegisterSnapshot {
             let mut ten = [0u8; 10];
             ten.copy_from_slice(&bytes[..10]);
             RegisterValue::LongDouble(ten)
+        }
+
+        fn take_mm(st_space: &[u32; 32], idx: usize) -> RegisterValue {
+            let mut bytes = [0u8; 8];
+            let base = idx * 4;
+            for i in 0..4 {
+                let word = st_space[base + i].to_le_bytes();
+                bytes[(i * 4)..(i * 4 + 4)].copy_from_slice(&word);
+            }
+            RegisterValue::Byte64(bytes)
         }
 
         fn take_xmm(xmm_space: &[u32; 64], idx: usize) -> RegisterValue {
@@ -104,63 +114,63 @@ impl RegisterSnapshot {
             Register::ORIGRAX => RegisterValue::Uint64(self.user_gp.orig_rax),
 
             // 32-bit registers
-            Register::EAX => RegisterValue::Uint64(self.user_gp.rax as u32 as u64),
-            Register::EDX => RegisterValue::Uint64(self.user_gp.rdx as u32 as u64),
-            Register::ECX => RegisterValue::Uint64(self.user_gp.rcx as u32 as u64),
-            Register::EBX => RegisterValue::Uint64(self.user_gp.rbx as u32 as u64),
-            Register::ESI => RegisterValue::Uint64(self.user_gp.rsi as u32 as u64),
-            Register::EDI => RegisterValue::Uint64(self.user_gp.rdi as u32 as u64),
-            Register::EBP => RegisterValue::Uint64(self.user_gp.rbp as u32 as u64),
-            Register::ESP => RegisterValue::Uint64(self.user_gp.rsp as u32 as u64),
-            Register::R8D => RegisterValue::Uint64(self.user_gp.r8 as u32 as u64),
-            Register::R9D => RegisterValue::Uint64(self.user_gp.r9 as u32 as u64),
-            Register::R10D => RegisterValue::Uint64(self.user_gp.r10 as u32 as u64),
-            Register::R11D => RegisterValue::Uint64(self.user_gp.r11 as u32 as u64),
-            Register::R12D => RegisterValue::Uint64(self.user_gp.r12 as u32 as u64),
-            Register::R13D => RegisterValue::Uint64(self.user_gp.r13 as u32 as u64),
-            Register::R14D => RegisterValue::Uint64(self.user_gp.r14 as u32 as u64),
-            Register::R15D => RegisterValue::Uint64(self.user_gp.r15 as u32 as u64),
+            Register::EAX => RegisterValue::Uint32(self.user_gp.rax as u32),
+            Register::EDX => RegisterValue::Uint32(self.user_gp.rdx as u32),
+            Register::ECX => RegisterValue::Uint32(self.user_gp.rcx as u32),
+            Register::EBX => RegisterValue::Uint32(self.user_gp.rbx as u32),
+            Register::ESI => RegisterValue::Uint32(self.user_gp.rsi as u32),
+            Register::EDI => RegisterValue::Uint32(self.user_gp.rdi as u32),
+            Register::EBP => RegisterValue::Uint32(self.user_gp.rbp as u32),
+            Register::ESP => RegisterValue::Uint32(self.user_gp.rsp as u32),
+            Register::R8D => RegisterValue::Uint32(self.user_gp.r8 as u32),
+            Register::R9D => RegisterValue::Uint32(self.user_gp.r9 as u32),
+            Register::R10D => RegisterValue::Uint32(self.user_gp.r10 as u32),
+            Register::R11D => RegisterValue::Uint32(self.user_gp.r11 as u32),
+            Register::R12D => RegisterValue::Uint32(self.user_gp.r12 as u32),
+            Register::R13D => RegisterValue::Uint32(self.user_gp.r13 as u32),
+            Register::R14D => RegisterValue::Uint32(self.user_gp.r14 as u32),
+            Register::R15D => RegisterValue::Uint32(self.user_gp.r15 as u32),
 
             // 16-bit registers
-            Register::AX => RegisterValue::Uint64(self.user_gp.rax as u16 as u64),
-            Register::DX => RegisterValue::Uint64(self.user_gp.rdx as u16 as u64),
-            Register::CX => RegisterValue::Uint64(self.user_gp.rcx as u16 as u64),
-            Register::SI => RegisterValue::Uint64(self.user_gp.rsi as u16 as u64),
-            Register::DI => RegisterValue::Uint64(self.user_gp.rdi as u16 as u64),
-            Register::BP => RegisterValue::Uint64(self.user_gp.rbp as u16 as u64),
-            Register::SP => RegisterValue::Uint64(self.user_gp.rsp as u16 as u64),
-            Register::R8W => RegisterValue::Uint64(self.user_gp.r8 as u16 as u64),
-            Register::R9W => RegisterValue::Uint64(self.user_gp.r9 as u16 as u64),
-            Register::R10W => RegisterValue::Uint64(self.user_gp.r10 as u16 as u64),
-            Register::R11W => RegisterValue::Uint64(self.user_gp.r11 as u16 as u64),
-            Register::R12W => RegisterValue::Uint64(self.user_gp.r12 as u16 as u64),
-            Register::R13W => RegisterValue::Uint64(self.user_gp.r13 as u16 as u64),
-            Register::R14W => RegisterValue::Uint64(self.user_gp.r14 as u16 as u64),
-            Register::R15W => RegisterValue::Uint64(self.user_gp.r15 as u16 as u64),
+            Register::AX => RegisterValue::Uint16(self.user_gp.rax as u16),
+            Register::DX => RegisterValue::Uint16(self.user_gp.rdx as u16),
+            Register::CX => RegisterValue::Uint16(self.user_gp.rcx as u16),
+            Register::SI => RegisterValue::Uint16(self.user_gp.rsi as u16),
+            Register::DI => RegisterValue::Uint16(self.user_gp.rdi as u16),
+            Register::BP => RegisterValue::Uint16(self.user_gp.rbp as u16),
+            Register::SP => RegisterValue::Uint16(self.user_gp.rsp as u16),
+            Register::R8W => RegisterValue::Uint16(self.user_gp.r8 as u16),
+            Register::R9W => RegisterValue::Uint16(self.user_gp.r9 as u16),
+            Register::R10W => RegisterValue::Uint16(self.user_gp.r10 as u16),
+            Register::R11W => RegisterValue::Uint16(self.user_gp.r11 as u16),
+            Register::R12W => RegisterValue::Uint16(self.user_gp.r12 as u16),
+            Register::R13W => RegisterValue::Uint16(self.user_gp.r13 as u16),
+            Register::R14W => RegisterValue::Uint16(self.user_gp.r14 as u16),
+            Register::R15W => RegisterValue::Uint16(self.user_gp.r15 as u16),
 
             // 8-bit high
-            Register::AH => RegisterValue::Uint64((self.user_gp.rax >> 8) & 0xff),
-            Register::DH => RegisterValue::Uint64((self.user_gp.rdx >> 8) & 0xff),
-            Register::CH => RegisterValue::Uint64((self.user_gp.rcx >> 8) & 0xff),
-            Register::BH => RegisterValue::Uint64((self.user_gp.rbx >> 8) & 0xff),
+            Register::AH => RegisterValue::Uint8(((self.user_gp.rax >> 8) & 0xff) as u8),
+            Register::DH => RegisterValue::Uint8(((self.user_gp.rdx >> 8) & 0xff) as u8),
+            Register::CH => RegisterValue::Uint8(((self.user_gp.rcx >> 8) & 0xff) as u8),
+            Register::BH => RegisterValue::Uint8(((self.user_gp.rbx >> 8) & 0xff) as u8),
 
             // 8-bit low
-            Register::AL => RegisterValue::Uint64(self.user_gp.rax & 0xff),
-            Register::DL => RegisterValue::Uint64(self.user_gp.rdx & 0xff),
-            Register::CL => RegisterValue::Uint64(self.user_gp.rcx & 0xff),
-            Register::BL => RegisterValue::Uint64(self.user_gp.rbx & 0xff),
-            Register::SIL => RegisterValue::Uint64(self.user_gp.rsi & 0xff),
-            Register::DIL => RegisterValue::Uint64(self.user_gp.rdi & 0xff),
-            Register::BPL => RegisterValue::Uint64(self.user_gp.rbp & 0xff),
-            Register::SPL => RegisterValue::Uint64(self.user_gp.rsp & 0xff),
-            Register::R8B => RegisterValue::Uint64(self.user_gp.r8 & 0xff),
-            Register::R9B => RegisterValue::Uint64(self.user_gp.r9 & 0xff),
-            Register::R10B => RegisterValue::Uint64(self.user_gp.r10 & 0xff),
-            Register::R11B => RegisterValue::Uint64(self.user_gp.r11 & 0xff),
-            Register::R12B => RegisterValue::Uint64(self.user_gp.r12 & 0xff),
-            Register::R13B => RegisterValue::Uint64(self.user_gp.r13 & 0xff),
-            Register::R14B => RegisterValue::Uint64(self.user_gp.r14 & 0xff),
-            Register::R15B => RegisterValue::Uint64(self.user_gp.r15 & 0xff),
+            Register::AL => RegisterValue::Uint8((self.user_gp.rax & 0xff) as u8),
+            Register::DL => RegisterValue::Uint8((self.user_gp.rdx & 0xff) as u8),
+            Register::CL => RegisterValue::Uint8((self.user_gp.rcx & 0xff) as u8),
+            Register::BL => RegisterValue::Uint8((self.user_gp.rbx & 0xff) as u8),
+            Register::SIL => RegisterValue::Uint8((self.user_gp.rsi & 0xff) as u8),
+            Register::DIL => RegisterValue::Uint8((self.user_gp.rdi & 0xff) as u8),
+            Register::BPL => RegisterValue::Uint8((self.user_gp.rbp & 0xff) as u8),
+            Register::SPL => RegisterValue::Uint8((self.user_gp.rsp & 0xff) as u8),
+            Register::R8B => RegisterValue::Uint8((self.user_gp.r8 & 0xff) as u8),
+            Register::R9B => RegisterValue::Uint8((self.user_gp.r9 & 0xff) as u8),
+            Register::R10B => RegisterValue::Uint8((self.user_gp.r10 & 0xff) as u8),
+            Register::R11B => RegisterValue::Uint8((self.user_gp.r11 & 0xff) as u8),
+            Register::R12B => RegisterValue::Uint8((self.user_gp.r12 & 0xff) as u8),
+            Register::R13B => RegisterValue::Uint8((self.user_gp.r13 & 0xff) as u8),
+            Register::R14B => RegisterValue::Uint8((self.user_gp.r14 & 0xff) as u8),
+            Register::R15B => RegisterValue::Uint8((self.user_gp.r15 & 0xff) as u8),
 
             // Floating point control/status
             Register::FCW => RegisterValue::Uint64(self.user_fp.cwd as u64),
@@ -181,6 +191,16 @@ impl RegisterSnapshot {
             Register::ST5 => take_long_double(&self.user_fp.st_space, 5),
             Register::ST6 => take_long_double(&self.user_fp.st_space, 6),
             Register::ST7 => take_long_double(&self.user_fp.st_space, 7),
+
+            // MM registers
+            Register::MM0 => take_mm(&self.user_fp.st_space, 0),
+            Register::MM1 => take_mm(&self.user_fp.st_space, 1),
+            Register::MM2 => take_mm(&self.user_fp.st_space, 2),
+            Register::MM3 => take_mm(&self.user_fp.st_space, 3),
+            Register::MM4 => take_mm(&self.user_fp.st_space, 4),
+            Register::MM5 => take_mm(&self.user_fp.st_space, 5),
+            Register::MM6 => take_mm(&self.user_fp.st_space, 6),
+            Register::MM7 => take_mm(&self.user_fp.st_space, 7),
 
             // XMM registers
             Register::XMM0 => take_xmm(&self.user_fp.xmm_space, 0),
