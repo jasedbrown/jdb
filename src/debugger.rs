@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow};
 use tracing::trace;
 
 use crate::history::CommandHistory;
-use crate::options::Options;
 use crate::process::Process;
 
 #[allow(dead_code)]
@@ -14,8 +13,8 @@ pub struct Debugger {
 }
 
 impl Debugger {
-    pub fn new(cli_options: &Options) -> Result<Debugger> {
-        let history = CommandHistory::new(cli_options)?;
+    pub fn new() -> Result<Debugger> {
+        let history = CommandHistory::new()?;
         Ok(Debugger {
             debugging: false,
             history,

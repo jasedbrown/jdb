@@ -126,36 +126,30 @@ impl Process {
         }
     }
 
-    /// Attach to the process, spawning a new process if we only have a name.
+    /// Attach to the process by spawning a new process for the configured executable.
     pub fn attach(&mut self, args: Vec<String>) -> Result<()> {
-        if let Some(pid) = self.cli_options.pid {
-            trace!("Attaching to pid {:?}", pid);
-            let pid = attach_pid(pid)?;
-            self.target_process = TargetProcess::Attached(pid);
-        } else {
-            trace!(
-                "Spawning inferior process {:?}",
-                self.cli_options.executable
-            );
-            self.inferior_output.clear();
-            let inferior_inner = launch_file(self.cli_options.executable.as_path(), args)?
-                .expect("Should receive inferior process info");
+        trace!(
+            "Spawning inferior process {:?}",
+            self.cli_options.executable
+        );
+        self.inferior_output.clear();
+        let inferior_inner = launch_file(self.cli_options.executable.as_path(), args)?
+            .expect("Should receive inferior process info");
 
-            let fd_clone = inferior_inner.reader_fd.try_clone()?;
-            let inferior_tx_clone = self.inferior_tx.clone();
-            let shutdown_rx_clone = self.shutdown_rx.clone();
+        let fd_clone = inferior_inner.reader_fd.try_clone()?;
+        let inferior_tx_clone = self.inferior_tx.clone();
+        let shutdown_rx_clone = self.shutdown_rx.clone();
 
-            // start inferior reader
-            let logging_thread = thread::spawn(move || {
-                read_inferior_logging(fd_clone, inferior_tx_clone, shutdown_rx_clone);
-            });
-            self.logging_thread = Some(logging_thread);
+        // start inferior reader
+        let logging_thread = thread::spawn(move || {
+            read_inferior_logging(fd_clone, inferior_tx_clone, shutdown_rx_clone);
+        });
+        self.logging_thread = Some(logging_thread);
 
-            let inferior = Inferior {
-                inner: inferior_inner,
-            };
-            self.target_process = TargetProcess::Inferior(inferior);
-        }
+        let inferior = Inferior {
+            inner: inferior_inner,
+        };
+        self.target_process = TargetProcess::Inferior(inferior);
 
         // TODO: not sure about setting the state here to Running ...
         self.state = ProcessState::Running;
@@ -207,10 +201,6 @@ impl Process {
         Ok(wait_status)
     }
 
-    pub fn terminate_on_exit(&self) -> bool {
-        self.cli_options.pid.is_some()
-    }
-
     pub fn destroy(&mut self) -> Result<()> {
         if !matches!(self.state, ProcessState::Running) {
             return Ok(());
@@ -226,13 +216,9 @@ impl Process {
         ptrace::detach(pid, None)?;
         kill(pid, Some(Signal::SIGCONT))?;
 
-        // if the debugger launched the process, we need to kill it
-        if self.terminate_on_exit() {
-            kill(pid, Some(Signal::SIGKILL))?;
-            self.wait_on_signal()?;
-        } else {
-            self.state = ProcessState::Unknown;
-        }
+        // we launched the inferior process, so we should reap it here
+        kill(pid, Some(Signal::SIGKILL))?;
+        self.wait_on_signal()?;
 
         self.target_process.shutdown();
 
@@ -264,13 +250,6 @@ impl Process {
             .as_ref()
             .map(|snapshot| snapshot.read(&register))
     }
-}
-
-fn attach_pid(pid: i32) -> Result<Pid> {
-    // PID should have been checked earlier (so that's it's a legit value, > 0)
-    let p = Pid::from_raw(pid);
-    ptrace::attach(p)?;
-    Ok(p)
 }
 
 fn launch_file(name: &Path, args: Vec<String>) -> Result<Option<InferiorInner>> {

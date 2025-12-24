@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use clap::Parser;
 use crossbeam_channel::{select, unbounded};
 use jdb::{
     JdbEvent,
@@ -59,12 +58,11 @@ fn init_logging() -> Result<WorkerGuard> {
 }
 
 fn main() -> Result<()> {
-    let options = Options::parse();
-    options.validate()?;
+    let options = Options::from_env()?;
 
     let _guard = init_logging()?;
 
-    let mut debugger = Debugger::new(&options)?;
+    let mut debugger = Debugger::new()?;
 
     let (process_tx, process_rx) = unbounded();
     let (process_shutdown_tx, process_shutdown_rx) = unbounded();

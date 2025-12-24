@@ -10,8 +10,6 @@ use std::{
 
 use anyhow::{Result, anyhow};
 
-use crate::options::Options;
-
 pub struct CommandHistory {
     /// Resolved (absolute) path to the history file.
     history_file: PathBuf,
@@ -22,8 +20,8 @@ pub struct CommandHistory {
 }
 
 impl CommandHistory {
-    pub fn new(cli_options: &Options) -> Result<Self> {
-        let history_file = resolve_history_file(&cli_options.history_file)?;
+    pub fn new() -> Result<Self> {
+        let history_file = resolve_history_file()?;
         let history = read_history(&history_file)?;
 
         Ok(Self {
@@ -87,30 +85,18 @@ fn read_history(history_file: &PathBuf) -> Result<Vec<String>> {
     }
 }
 
-fn resolve_history_file(history_file: &Option<PathBuf>) -> Result<PathBuf> {
-    let mut path = match history_file {
-        Some(p) => p.clone(),
-        None => {
-            let cache_dir = env::var_os("XDG_CACHE_HOME")
-                .and_then(|p| {
-                    if p.is_empty() {
-                        None
-                    } else {
-                        Some(PathBuf::from(p))
-                    }
-                })
-                .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
-                .ok_or_else(|| anyhow!("Neither XDG_CACHE_HOME nor HOME is set"))?;
-            cache_dir.join("jdb").join("history")
-        }
-    };
+fn resolve_history_file() -> Result<PathBuf> {
+    let path = env::var_os("XDG_CACHE_HOME")
+        .and_then(|p| {
+            if p.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(p))
+            }
+        })
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".cache")))
+        .ok_or_else(|| anyhow!("Neither XDG_CACHE_HOME nor HOME is set"))?;
 
-    if let Some(s) = path.to_str()
-        && s.starts_with("~/")
-    {
-        let home = env::var_os("HOME").ok_or_else(|| anyhow!("HOME is not set"))?;
-        path = PathBuf::from(home).join(&s[2..]);
-    }
-
-    Ok(path)
+    let history_file = path.join("jdb").join("history");
+    Ok(history_file)
 }
