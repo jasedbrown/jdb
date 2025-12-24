@@ -177,8 +177,8 @@ impl RegisterSnapshot {
             Register::FSW => RegisterValue::Uint64(self.user_fp.swd as u64),
             Register::FTW => RegisterValue::Uint64(self.user_fp.ftw as u64),
             Register::FOP => RegisterValue::Uint64(self.user_fp.fop as u64),
-            Register::FIP => RegisterValue::Uint64(self.user_fp.rip),
-            Register::FDP => RegisterValue::Uint64(self.user_fp.rdp),
+            Register::FRIP => RegisterValue::Uint64(self.user_fp.rip),
+            Register::FRDP => RegisterValue::Uint64(self.user_fp.rdp),
             Register::MXCSR => RegisterValue::Uint64(self.user_fp.mxcsr as u64),
             Register::MXCSR_MASK => RegisterValue::Uint64(self.user_fp.mxcr_mask as u64),
 

@@ -50,10 +50,13 @@ pub enum RegisterType {
 }
 
 /// Canonical width for a register or subregister.
+///
+/// Note: variants are prefixed with 'W' as rust won't allow a digit as the first char.
 #[derive(Clone, Copy, Debug)]
 pub enum RegisterWidth {
-    // note: variants are prefixed with 'W' as rust won't allow a digit as the first char.
     W128,
+    /// `long_double` widths of 80 bits (used in st0..st7 registers)
+    W80,
     W64,
     W32,
     W16,
@@ -66,6 +69,7 @@ impl RegisterWidth {
     const fn bits(&self) -> usize {
         match self {
             RegisterWidth::W128 => 128,
+            RegisterWidth::W80 => 80,
             RegisterWidth::W64 => 64,
             RegisterWidth::W32 => 32,
             RegisterWidth::W16 => 16,
@@ -86,6 +90,7 @@ impl RegisterWidth {
             | RegisterWidth::W16
             | RegisterWidth::W32
             | RegisterWidth::W64
+            | RegisterWidth::W80
             | RegisterWidth::W128 => 0,
         }
     }
@@ -187,8 +192,8 @@ pub enum Register {
     FSW,
     FTW,
     FOP,
-    FIP,
-    FDP,
+    FRIP,
+    FRDP,
     MXCSR,
     MXCSR_MASK,
     ST0,
@@ -339,16 +344,14 @@ impl FpuField {
 #[derive(Copy, Clone, Debug)]
 pub enum FpuArrayField {
     St,
-    Mm,
     Xmm,
 }
 
 impl FpuArrayField {
     const fn offset(self) -> usize {
         match self {
+            // MMX (mm0..mm7) use the same space as x87 registers (st)
             FpuArrayField::St => memoffset::offset_of!(libc::user_fpregs_struct, st_space),
-            // MMX (mm0..mm7) use the same space as x87 registers
-            FpuArrayField::Mm => memoffset::offset_of!(libc::user_fpregs_struct, st_space),
             FpuArrayField::Xmm => memoffset::offset_of!(libc::user_fpregs_struct, xmm_space),
         }
     }
@@ -660,7 +663,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rax),
     },
     RegisterDecl {
@@ -669,7 +672,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rdx),
     },
     RegisterDecl {
@@ -678,7 +681,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rcx),
     },
     RegisterDecl {
@@ -687,7 +690,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rbx),
     },
     RegisterDecl {
@@ -696,7 +699,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rsi),
     },
     RegisterDecl {
@@ -705,7 +708,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rdi),
     },
     RegisterDecl {
@@ -714,7 +717,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rbp),
     },
     RegisterDecl {
@@ -723,7 +726,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::Rsp),
     },
     RegisterDecl {
@@ -732,7 +735,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R8),
     },
     RegisterDecl {
@@ -741,7 +744,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R9),
     },
     RegisterDecl {
@@ -750,7 +753,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R10),
     },
     RegisterDecl {
@@ -759,7 +762,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R11),
     },
     RegisterDecl {
@@ -768,7 +771,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R12),
     },
     RegisterDecl {
@@ -777,7 +780,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R13),
     },
     RegisterDecl {
@@ -786,7 +789,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R14),
     },
     RegisterDecl {
@@ -795,7 +798,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint32,
         loc: Location::Regs(RegsField::R15),
     },
     // 16-bit subregisters. no dwarf IDs
@@ -805,7 +808,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::Rax),
     },
     RegisterDecl {
@@ -814,7 +817,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::Rdx),
     },
     RegisterDecl {
@@ -823,7 +826,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::Rcx),
     },
     RegisterDecl {
@@ -832,7 +835,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::Rsi),
     },
     RegisterDecl {
@@ -841,7 +844,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::Rdi),
     },
     RegisterDecl {
@@ -850,7 +853,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::Rbp),
     },
     RegisterDecl {
@@ -859,7 +862,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::Rsp),
     },
     RegisterDecl {
@@ -868,7 +871,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R8),
     },
     RegisterDecl {
@@ -877,7 +880,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R9),
     },
     RegisterDecl {
@@ -886,7 +889,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R10),
     },
     RegisterDecl {
@@ -895,7 +898,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R11),
     },
     RegisterDecl {
@@ -904,7 +907,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R12),
     },
     RegisterDecl {
@@ -913,7 +916,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R13),
     },
     RegisterDecl {
@@ -922,7 +925,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R14),
     },
     RegisterDecl {
@@ -931,7 +934,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Regs(RegsField::R15),
     },
     // 8-bit high subregisters. no dwarf IDs
@@ -941,7 +944,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8H,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rax),
     },
     RegisterDecl {
@@ -950,7 +953,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8H,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rdx),
     },
     RegisterDecl {
@@ -959,7 +962,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8H,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rcx),
     },
     RegisterDecl {
@@ -968,7 +971,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8H,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rbx),
     },
     // 8-bit low subregisters. no dwarf IDs
@@ -978,7 +981,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rax),
     },
     RegisterDecl {
@@ -987,7 +990,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rdx),
     },
     RegisterDecl {
@@ -996,7 +999,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rcx),
     },
     RegisterDecl {
@@ -1005,7 +1008,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rbx),
     },
     RegisterDecl {
@@ -1014,7 +1017,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rsi),
     },
     RegisterDecl {
@@ -1023,7 +1026,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rdi),
     },
     RegisterDecl {
@@ -1032,7 +1035,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rbp),
     },
     RegisterDecl {
@@ -1041,7 +1044,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::Rsp),
     },
     RegisterDecl {
@@ -1050,7 +1053,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R8),
     },
     RegisterDecl {
@@ -1059,7 +1062,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R9),
     },
     RegisterDecl {
@@ -1068,7 +1071,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R10),
     },
     RegisterDecl {
@@ -1077,7 +1080,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R11),
     },
     RegisterDecl {
@@ -1086,7 +1089,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R12),
     },
     RegisterDecl {
@@ -1095,7 +1098,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R13),
     },
     RegisterDecl {
@@ -1104,7 +1107,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R14),
     },
     RegisterDecl {
@@ -1113,7 +1116,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W8L,
         reg_type: RegisterType::SubGeneralPurpose,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint8,
         loc: Location::Regs(RegsField::R15),
     },
     // Floating point control registers
@@ -1123,7 +1126,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::Cwd),
     },
     RegisterDecl {
@@ -1132,7 +1135,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::Swd),
     },
     RegisterDecl {
@@ -1141,7 +1144,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::Ftw),
     },
     RegisterDecl {
@@ -1150,25 +1153,25 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W16,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::Fop),
     },
     RegisterDecl {
-        register: Register::FIP,
+        register: Register::FRIP,
         name: "rip",
         dwarf: -1,
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::Rip),
     },
     RegisterDecl {
-        register: Register::FDP,
+        register: Register::FRDP,
         name: "rdp",
         dwarf: -1,
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::Rdp),
     },
     RegisterDecl {
@@ -1177,7 +1180,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::Mxcsr),
     },
     RegisterDecl {
@@ -1186,7 +1189,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         dwarf: -1,
         width: RegisterWidth::W32,
         reg_type: RegisterType::FloatingPoint,
-        format: RegisterFormat::Uint64,
+        format: RegisterFormat::Uint16,
         loc: Location::Fpu(FpuField::MxcrMask),
     },
     // x87 stack
@@ -1194,7 +1197,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST0,
         name: "st0",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 0),
@@ -1203,7 +1206,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST1,
         name: "st1",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 1),
@@ -1212,7 +1215,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST2,
         name: "st2",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 2),
@@ -1221,7 +1224,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST3,
         name: "st3",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 3),
@@ -1230,7 +1233,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST4,
         name: "st4",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 4),
@@ -1239,7 +1242,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST5,
         name: "st5",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 5),
@@ -1248,7 +1251,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST6,
         name: "st6",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 6),
@@ -1257,7 +1260,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         register: Register::ST7,
         name: "st7",
         dwarf: -1,
-        width: RegisterWidth::W128,
+        width: RegisterWidth::W80,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::LongDouble,
         loc: Location::FpuArray(FpuArrayField::St, 7),
@@ -1270,7 +1273,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 0),
+        loc: Location::FpuArray(FpuArrayField::St, 0),
     },
     RegisterDecl {
         register: Register::MM1,
@@ -1279,7 +1282,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 1),
+        loc: Location::FpuArray(FpuArrayField::St, 1),
     },
     RegisterDecl {
         register: Register::MM2,
@@ -1288,7 +1291,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 2),
+        loc: Location::FpuArray(FpuArrayField::St, 2),
     },
     RegisterDecl {
         register: Register::MM3,
@@ -1297,7 +1300,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 3),
+        loc: Location::FpuArray(FpuArrayField::St, 3),
     },
     RegisterDecl {
         register: Register::MM4,
@@ -1306,7 +1309,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 4),
+        loc: Location::FpuArray(FpuArrayField::St, 4),
     },
     RegisterDecl {
         register: Register::MM5,
@@ -1315,7 +1318,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 5),
+        loc: Location::FpuArray(FpuArrayField::St, 5),
     },
     RegisterDecl {
         register: Register::MM6,
@@ -1324,7 +1327,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 6),
+        loc: Location::FpuArray(FpuArrayField::St, 6),
     },
     RegisterDecl {
         register: Register::MM7,
@@ -1333,7 +1336,7 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
         width: RegisterWidth::W64,
         reg_type: RegisterType::FloatingPoint,
         format: RegisterFormat::Byte64,
-        loc: Location::FpuArray(FpuArrayField::Mm, 7),
+        loc: Location::FpuArray(FpuArrayField::St, 7),
     },
     // XMM registers
     RegisterDecl {
