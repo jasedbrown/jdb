@@ -2,14 +2,14 @@
 use anyhow::Result;
 use libc::{user, user_fpregs_struct, user_regs_struct};
 use memoffset::offset_of;
-use nix::sys::ptrace::{getregset, read_user, regset};
+use nix::sys::ptrace::{getregset, read_user, regset, setregset, write_user};
 use nix::unistd::Pid;
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use crate::process::register_info::{
-    Location, Register, RegisterFormat, RegisterInfo, RegisterValue, UserField, registers_info,
+    registers_info, Location, Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, UserField
 };
 
 static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
@@ -21,6 +21,12 @@ static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(
 
     regs
 });
+
+fn expect_register_info(register: &Register) -> &RegisterInfo {
+    REGISTERS_MAP
+        .get(register)
+        .unwrap_or_else(|| panic!("unknown register: {register:?}"))
+}
 
 /// Current state of the registers for the debugged process.
 ///
@@ -52,11 +58,9 @@ impl RegisterSnapshot {
             debug_regs,
         }
     }
-
+    
     pub fn read(&self, register: &Register) -> RegisterValue {
-        let info = REGISTERS_MAP
-            .get(register)
-            .unwrap_or_else(|| panic!("unknown register: {register:?}"));
+        let info = expect_register_info(register);
         match info.loc {
             // Offsets are computed relative to the `user` struct; we store only the
             // component struct, so adjust by the field offset.
@@ -76,17 +80,32 @@ impl RegisterSnapshot {
         }
     }
 
-    // This is called infrequently enough that just re-reading all the registers
-    // and returning a new instance is not a problem.
-    pub fn set_value(
+    pub fn write(
         &mut self,
-        _register: Register,
-        _value: RegisterValue,
-    ) -> Result<RegisterSnapshot> {
-        // update register on CPU - ptrace::write_user
+        register: Register,
+        value: RegisterValue,
+    ) -> Result<()> {
+        // TODO: there's a lot of incomplete work here ...
+        // including a problem of writing a reg value less than u64 :shrug:
+        // will fix when I hit it ... just really need to move forward for now
+        
+        let info = expect_register_info(&register);
 
-        // update self - or just re-read_all_registers()
-        read_all_registers(self.pid)
+        // apparently PTRACE_POKEUSER does not work on the x87 area on x86
+        // (according to the Sy Brand book), so write all the x87 registers at once.
+        if matches!(info.register_type, RegisterType::FloatingPoint) {
+            let fpregs = self.user_fp;
+            // TODO: actually set the value into the struct
+            setregset::<regset::NT_PRFPREG>(self.pid, fpregs)?;
+        } else {
+            // clears out the bottom 3 bits (! is bitwise NOT), effectively round
+            // down to a multiple of 8.
+            let aligned_offset = info.offset & !0b111;
+            // TODO: i have no idea if this is correct?
+            write_user(self.pid, aligned_offset as _, value.try_into()?)?;
+        }
+
+        Ok(())
     }
 }
 

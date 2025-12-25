@@ -7,8 +7,9 @@
 //! is constant, and the value of an easy-to-read if verbose file is much
 //! higher than a bunch of super fucking complicated macros ... :shrug:
 
-use std::sync::LazyLock;
+use std::{sync::LazyLock, u8};
 
+use anyhow::{anyhow, Result};
 use strum::EnumDiscriminants;
 
 /// Strongly typed representation of register values in their native sizes.
@@ -19,6 +20,8 @@ pub enum RegisterValue {
     Uint16(u16),
     Uint32(u32),
     Uint64(u64),
+
+    // TODO: are these signed interger values used in any register value?
     Int8(i8),
     Int16(i16),
     Int32(i32),
@@ -37,6 +40,35 @@ pub enum RegisterValue {
     LongDouble([u8; 10]),
     Byte64([u8; 8]),
     Byte128([u8; 16]),
+}
+
+// WIP implementation, not sure i like this, at all
+impl TryFrom<RegisterValue> for i64 {
+    type Error = anyhow::Error;
+
+    fn try_from(reg_value: RegisterValue) -> Result<Self, Self::Error> {
+        use RegisterValue::*;
+        let val = match reg_value {
+            Uint8(v) => v as i64,
+            Uint16(v) => v as i64,
+            Uint32(v) => v as i64,
+            Uint64(v) => v as i64,
+            Int8(v) => v as i64,
+            Int16(v) => v as i64,
+            Int32(v) => v as i64,
+            Int64(v) => v,
+
+            Float(_) | LongDouble(_) | Double(_) => {
+                return Err(anyhow!("Cannot convert floating point value to c_long"));
+            }
+
+            Byte64(_) | Byte128(_) => {
+                return Err(anyhow!("WTF, idk ..."));
+            }
+        };
+
+        Ok(val)
+    }
 }
 
 /// Broad grouping for registers, used for display and filtering.
