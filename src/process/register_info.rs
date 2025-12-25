@@ -7,9 +7,9 @@
 //! is constant, and the value of an easy-to-read if verbose file is much
 //! higher than a bunch of super fucking complicated macros ... :shrug:
 
-use std::{sync::LazyLock, u8};
+use std::sync::LazyLock;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use strum::EnumDiscriminants;
 
 /// Strongly typed representation of register values in their native sizes.

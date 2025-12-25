@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use crate::process::register_info::{
-    registers_info, Location, Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, UserField
+    Location, Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, UserField,
+    registers_info,
 };
 
 static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
@@ -58,7 +59,7 @@ impl RegisterSnapshot {
             debug_regs,
         }
     }
-    
+
     pub fn read(&self, register: &Register) -> RegisterValue {
         let info = expect_register_info(register);
         match info.loc {
@@ -80,15 +81,11 @@ impl RegisterSnapshot {
         }
     }
 
-    pub fn write(
-        &mut self,
-        register: Register,
-        value: RegisterValue,
-    ) -> Result<()> {
+    pub fn write(&mut self, register: Register, value: RegisterValue) -> Result<()> {
         // TODO: there's a lot of incomplete work here ...
         // including a problem of writing a reg value less than u64 :shrug:
         // will fix when I hit it ... just really need to move forward for now
-        
+
         let info = expect_register_info(&register);
 
         // apparently PTRACE_POKEUSER does not work on the x87 area on x86

@@ -22,7 +22,7 @@ use crate::process::register_info::{Register, RegisterValue};
 use crate::process::registers::{RegisterSnapshot, read_all_registers};
 
 mod inferior;
-mod register_info;
+pub mod register_info;
 mod registers;
 
 #[derive(Clone, Debug)]
