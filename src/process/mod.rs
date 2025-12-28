@@ -2,6 +2,7 @@ use anyhow::{Result, anyhow};
 use crossbeam_channel::{Receiver, Sender};
 use nix::libc;
 use nix::pty::{Winsize, openpty};
+use nix::sys::personality::{self, Persona};
 use nix::sys::ptrace;
 use nix::sys::signal::{Signal, kill};
 use nix::sys::wait::{WaitStatus, waitpid};
@@ -385,6 +386,9 @@ fn launch_executable(name: &Path, args: Vec<String>) -> Result<Option<Inferior>>
             }))
         }
         ForkResult::Child => {
+            // disable address space randomization (ASLR)
+            personality::set(Persona::ADDR_NO_RANDOMIZE)?;
+
             setsid()?;
             // make slave controlling TTY
             unsafe { libc::ioctl(pty.slave.as_raw_fd(), libc::TIOCSCTTY, 0) };
