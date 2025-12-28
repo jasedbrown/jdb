@@ -2,6 +2,13 @@ use std::{env, path::PathBuf};
 
 use anyhow::{Result, anyhow};
 
+/// Configuration to enable or disable linux ASLR on the inferior processes.
+#[derive(Copy, Clone, Debug)]
+pub enum Aslr {
+    Enabled,
+    Disabled,
+}
+
 /// Basic CLI options for the debugger.
 #[derive(Clone, Debug)]
 pub struct Options {

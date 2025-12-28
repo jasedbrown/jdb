@@ -19,7 +19,7 @@ use std::thread::{self, JoinHandle};
 use tracing::trace;
 
 use crate::debugger::BreakpointCommand;
-use crate::options::Options;
+use crate::options::{Aslr, Options};
 use crate::process::inferior::read_inferior_logging;
 use crate::process::register_info::{Register, RegisterValue};
 use crate::process::registers::{RegisterSnapshot, read_all_registers};
@@ -170,7 +170,7 @@ impl Process {
             self.cli_options.executable
         );
         self.inferior_output.clear();
-        let inferior = launch_executable(self.cli_options.executable.as_path(), args)?
+        let inferior = launch_executable(self.cli_options.executable.as_path(), args, Aslr::Enabled)?
             .expect("Should receive inferior process info");
 
         let fd_clone = inferior.reader_fd.try_clone()?;
@@ -356,7 +356,7 @@ impl Process {
     }
 }
 
-fn launch_executable(name: &Path, args: Vec<String>) -> Result<Option<Inferior>> {
+fn launch_executable(name: &Path, inferior_args: Vec<String>, aslr: Aslr) -> Result<Option<Inferior>> {
     let pty = openpty(
         Some(&Winsize {
             ws_row: 24,
@@ -387,7 +387,9 @@ fn launch_executable(name: &Path, args: Vec<String>) -> Result<Option<Inferior>>
         }
         ForkResult::Child => {
             // disable address space randomization (ASLR)
-            personality::set(Persona::ADDR_NO_RANDOMIZE)?;
+            if matches!(aslr, Aslr::Disabled) {
+                personality::set(Persona::ADDR_NO_RANDOMIZE)?;
+            }
 
             setsid()?;
             // make slave controlling TTY
@@ -404,9 +406,9 @@ fn launch_executable(name: &Path, args: Vec<String>) -> Result<Option<Inferior>>
             let filename = CString::new(name.as_os_str().as_bytes())?;
 
             // Build argv as &[&CStr] while retaining owned CString storage.
-            let mut cstr_storage = Vec::with_capacity(args.len() + 1);
+            let mut cstr_storage = Vec::with_capacity(inferior_args.len() + 1);
             cstr_storage.push(filename.clone());
-            for arg in args {
+            for arg in inferior_args {
                 cstr_storage.push(CString::new(arg)?);
             }
             let cstr_args: Vec<&CStr> = cstr_storage.iter().map(|s| s.as_c_str()).collect();

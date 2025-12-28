@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossbeam_channel::unbounded;
-use jdb::options::Options;
+use jdb::options::{Aslr, Options};
 use jdb::process::Process;
 use jdb::process::register_info::Register;
 
@@ -59,7 +59,7 @@ fn attach_read_and_resume_inferior() -> Result<()> {
     let process = process_guard.get_mut();
 
     // Attach (launch) the inferior; it stops on SIGSTOP right away.
-    process.attach(Vec::new()).expect("attach should succeed");
+    process.attach(Vec::new(), Aslr::Disabled).expect("attach should succeed");
     let pid = process.pid().expect("pid should be available after attach");
     process.resume()?;
 
