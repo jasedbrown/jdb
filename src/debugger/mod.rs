@@ -3,8 +3,8 @@ use tracing::trace;
 
 use crate::history::CommandHistory;
 use crate::process::Process;
+use crate::process::stoppoint::{StoppointId, VirtualAddress};
 
-#[allow(dead_code)]
 pub struct Debugger {
     /// Flag if the program is currently being debugged.
     debugging: bool,
@@ -54,6 +54,10 @@ impl Debugger {
                 process.resume()?;
                 process.wait_on_signal()?;
             }
+            Command::Breakpoint(cmd) => {
+                process.breakpoint_command(cmd)?;
+                // wait_on_signal?? i don't think so, but ....
+            }
             Command::Quit => {
                 process.destroy()?;
                 self.debugging = false;
@@ -76,10 +80,19 @@ pub enum DispatchResult {
 }
 
 #[derive(Clone, Debug)]
+pub enum BreakpointCommand {
+    Create(VirtualAddress),
+    Delete(StoppointId),
+    Enable(StoppointId),
+    Disable(StoppointId),
+}
+
+#[derive(Clone, Debug)]
 pub enum Command {
     /// Start or connect to the inferior process.
     Run(Vec<String>),
     Continue,
+    Breakpoint(BreakpointCommand),
     /// Exit the debugger (and kill inferior process if it was launched).
     Quit,
 }
@@ -96,6 +109,18 @@ impl TryFrom<String> for Command {
             "run" | "r" => Command::Run(args),
             "continue" | "c" => Command::Continue,
             "quit" | "q" => Command::Quit,
+            "break" | "b" => {
+                Command::Breakpoint(BreakpointCommand::Create(VirtualAddress::try_from(args)?))
+            }
+            "delete" => {
+                Command::Breakpoint(BreakpointCommand::Delete(StoppointId::try_from(args)?))
+            }
+            "enable" => {
+                Command::Breakpoint(BreakpointCommand::Enable(StoppointId::try_from(args)?))
+            }
+            "disable" => {
+                Command::Breakpoint(BreakpointCommand::Disable(StoppointId::try_from(args)?))
+            }
             _ => return Err(anyhow!("unknown command: {:?}", value)),
         };
 
