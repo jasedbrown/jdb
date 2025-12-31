@@ -1,7 +1,7 @@
 # jdb (jason's debugger)
 
 # Overview
-This project is a rust-based, command line debugger. The project only targets linux/x86_64.
+This project is a rust-based, command line debugger. The project only supports linux/x86_64, but there may be nacent support of aarch64 and risc-v.
 
 Based on Sy Brand's ["Building a Debugger"](https://nostarch.com/building-a-debugger) book, this is my attempt to implement the debugger in rust.
 
@@ -10,8 +10,24 @@ The last is entertaining as I've spent damn near two decades in databass-land, s
 
 I've implemented the key bindings from an emacs user PoV. 
 
+# Building
+
+To cross-compile on x86_64 for aarch64 and risc-v targets, install the additional toolchains:
+
+```
+sudo pacman -S aarch64-linux-gnu-gcc aarch64-linux-gnu-binutils aarch64-linux-gnu-glibc \
+               riscv64-linux-gnu-gcc riscv64-linux-gnu-binutils riscv64-linux-gnu-glibc
+```
+
+To build `jdb` for those other architectures:
+
+```
+cargo build --target aarch64-unknown-linux-gnu
+cargo build --target riscv64gc-unknown-linux-gnu
+```
+
 # Executing
-`cargo --locked run -- name <full path to executable>`
+`cargo --locked run -- <full path to executable>`
 
 # Details
 The TUI is built with the `ratatui` library. Access the lower-level linux structs and system calls is handled via the `libc` and `nix` crates.
@@ -35,3 +51,4 @@ We log to two places from the debugger:
 | Main screen (edit) | `Alt`+`x` | Exit edit mode, focus source pane |
 | Logging screen | `q` | Quit debugger (dev escape hatch) |
 | Logging screen | `Space`, `+`, `-`, `h`, `f`, `Esc`, arrows, `PageUp`/`PageDown` | Forwarded to `tui-logger` widget for navigation/filtering |
+
