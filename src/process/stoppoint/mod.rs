@@ -1,5 +1,7 @@
 use anyhow::{Error, anyhow};
 
+use crate::process::register_info::RegisterValue;
+
 pub mod breakpoint_site;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -37,6 +39,29 @@ impl TryFrom<Vec<String>> for VirtualAddress {
         let s = v.first().unwrap();
         let address = s.parse::<u64>()?;
         Ok(Self { address })
+    }
+}
+
+impl TryFrom<RegisterValue> for VirtualAddress {
+    type Error = Error;
+
+    fn try_from(value: RegisterValue) -> Result<Self, Self::Error> {
+        match value {
+            RegisterValue::Uint64(address) => Ok(Self { address }),
+            _ => Err(anyhow!("Cannot create virtual address from: {:?}", value)),
+        }
+    }
+}
+
+impl From<u64> for VirtualAddress {
+    fn from(value: u64) -> Self {
+        Self { address: value }
+    }
+}
+
+impl From<VirtualAddress> for RegisterValue {
+    fn from(address: VirtualAddress) -> RegisterValue {
+        RegisterValue::Uint64(address.address)
     }
 }
 
