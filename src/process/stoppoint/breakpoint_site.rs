@@ -49,11 +49,11 @@ impl BreakpointSite {
         self.address
     }
 
-    pub fn at_address(&self, address: VirtualAddress) -> bool {
-        self.address == address
+    pub fn at_address(&self, address: &VirtualAddress) -> bool {
+        self.address == *address
     }
 
-    pub fn in_range(&self, low: VirtualAddress, high: VirtualAddress) -> bool {
-        low <= self.address && high > self.address
+    pub fn in_range(&self, low: &VirtualAddress, high: &VirtualAddress) -> bool {
+        *low <= self.address && *high > self.address
     }
 }
