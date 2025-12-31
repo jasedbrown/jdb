@@ -170,8 +170,9 @@ impl Process {
             self.cli_options.executable
         );
         self.inferior_output.clear();
-        let inferior = launch_executable(self.cli_options.executable.as_path(), args, Aslr::Enabled)?
-            .expect("Should receive inferior process info");
+        let inferior =
+            launch_executable(self.cli_options.executable.as_path(), args, Aslr::Enabled)?
+                .expect("Should receive inferior process info");
 
         let fd_clone = inferior.reader_fd.try_clone()?;
         let inferior_tx_clone = self.inferior_tx.clone();
@@ -356,7 +357,11 @@ impl Process {
     }
 }
 
-fn launch_executable(name: &Path, inferior_args: Vec<String>, aslr: Aslr) -> Result<Option<Inferior>> {
+fn launch_executable(
+    name: &Path,
+    inferior_args: Vec<String>,
+    aslr: Aslr,
+) -> Result<Option<Inferior>> {
     let pty = openpty(
         Some(&Winsize {
             ws_row: 24,
