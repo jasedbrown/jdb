@@ -12,6 +12,9 @@ use crate::process::register_info::{
     Location, Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, UserField,
     registers_info,
 };
+use crate::process::registers::RegisterBackend;
+
+pub struct ArchRegisterBackend;
 
 static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
     let mut regs = HashMap::new();
@@ -183,7 +186,8 @@ fn value_from_bytes(bytes: &[u8], start: usize, info: &RegisterInfo) -> Register
     }
 }
 
-pub fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
+impl RegisterBackend for ArchRegisterBackend {
+    fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
     let gp_reg = getregset::<regset::NT_PRSTATUS>(pid).unwrap();
     let fp_reg = getregset::<regset::NT_PRFPREG>(pid).unwrap();
 
@@ -197,5 +201,6 @@ pub fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
         *e = reg as u64;
     }
 
-    Ok(RegisterSnapshot::new(pid, gp_reg, fp_reg, debug_regs))
+        Ok(RegisterSnapshot::new(pid, gp_reg, fp_reg, debug_regs))
+    }
 }
