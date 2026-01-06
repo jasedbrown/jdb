@@ -59,9 +59,7 @@ fn attach_read_and_resume_inferior() -> Result<()> {
     let process = process_guard.get_mut();
 
     // Attach (launch) the inferior; it stops on SIGSTOP right away.
-    process
-        .attach(Vec::new())
-        .expect("attach should succeed");
+    process.attach(Vec::new()).expect("attach should succeed");
     let pid = process.pid().expect("pid should be available after attach");
     process.resume()?;
 
