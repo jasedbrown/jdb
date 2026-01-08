@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use anyhow::Result;
 use libc::{user, user_fpregs_struct, user_regs_struct};
 use memoffset::offset_of;
@@ -13,8 +12,6 @@ use crate::process::register_info::{
     registers_info,
 };
 use crate::process::registers::RegisterBackend;
-
-pub struct ArchRegisterBackend;
 
 static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
     let mut regs = HashMap::new();
@@ -185,6 +182,8 @@ fn value_from_bytes(bytes: &[u8], start: usize, info: &RegisterInfo) -> Register
         }
     }
 }
+
+pub struct ArchRegisterBackend;
 
 impl RegisterBackend for ArchRegisterBackend {
     fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {

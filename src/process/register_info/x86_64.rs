@@ -329,7 +329,6 @@ impl From<&RegisterDecl> for RegisterInfo {
             width: decl.width,
             register_type: decl.reg_type,
             format: decl.format,
-            loc: decl.loc,
         }
     }
 }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::{Result, anyhow};
 use strum::EnumDiscriminants;
 
@@ -8,6 +9,9 @@ pub use x86_64::*;
 
 #[cfg(target_arch = "aarch64")]
 mod aarch64;
+#[cfg(target_arch = "aarch64")]
+pub use aarch64::*;
+
 #[cfg(target_arch = "riscv64")]
 mod riscv64;
 
@@ -26,7 +30,6 @@ pub struct RegisterInfo {
     pub width: RegisterWidth,
     pub register_type: RegisterType,
     pub format: RegisterFormat,
-    pub loc: Location,
 }
 
 /// Broad grouping for registers, used for display and filtering.
