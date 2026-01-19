@@ -1,5 +1,3 @@
-
-
 /// All registers supported by the debugger for aarch64.
 ///
 /// The 32-bit general purpose registers are just the lower 32 bits
@@ -100,7 +98,7 @@ pub enum Register {
     // tpidr2 - Second thread pointer, added in ARMv8.7 / ARMv9.2.
     // Used for additional TLS needs, particularly for SME
     TPIDR2,
-    
+
     // Floating Point Status Register
     FPSR,
     // Floating Point Control Register
@@ -240,7 +238,7 @@ pub enum Register {
     S28,
     S29,
     S30,
-    S31,    
+    S31,
 
     // NEON (SIMD) registers. 16-bit
     H0,

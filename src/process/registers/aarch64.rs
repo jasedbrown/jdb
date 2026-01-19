@@ -1,8 +1,8 @@
 #![allow(dead_code)]
-use anyhow::Result;
-use libc::{user_regs_struct, user_fpsimd_struct};
-use nix::unistd::Pid;
 use crate::process::{Register, RegisterBackend, RegisterValue};
+use anyhow::Result;
+use libc::{user_fpsimd_struct, user_regs_struct};
+use nix::unistd::Pid;
 
 /// Current state of the registers for the debugged process.
 #[derive(Clone, Debug)]
@@ -25,4 +25,3 @@ impl RegisterSnapshot {
 pub fn read_all_registers(_pid: Pid) -> Result<RegisterSnapshot> {
     todo!("impl me");
 }
-

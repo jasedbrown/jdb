@@ -22,7 +22,7 @@ use crate::debugger::BreakpointCommand;
 use crate::options::{Aslr, Options};
 use crate::process::inferior::read_inferior_logging;
 use crate::process::register_info::{Register, RegisterValue};
-use crate::process::registers::{read_all_registers, RegisterSnapshot};
+use crate::process::registers::{RegisterSnapshot, read_all_registers};
 use crate::process::stoppoint::breakpoint_site::BreakpointSite;
 use crate::process::stoppoint::{INTERRUPT_INSTRUCTION, StoppointId, VirtualAddress};
 
@@ -240,9 +240,7 @@ impl Process {
         };
 
         if matches!(self.state, ProcessState::Stopped) {
-            self.registers = Some(
-                read_all_registers(self.expect_pid())?,
-            );
+            self.registers = Some(read_all_registers(self.expect_pid())?);
         }
 
         Ok(wait_status)

@@ -198,4 +198,3 @@ pub fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
 
     Ok(RegisterSnapshot::new(pid, gp_reg, fp_reg, debug_regs))
 }
-
