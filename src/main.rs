@@ -38,7 +38,7 @@ fn init_logging() -> Result<WorkerGuard> {
     fs::create_dir_all(&log_dir)?;
     let file_appender = tracing_appender::rolling::never(&log_dir, "jdb.log");
 
-    // TODO: it would be fancy to add a heaer to the log file every time the
+    // TODO: it would be fancy to add a header to the log file every time the
     // debugger is launched (maybe even with config options ...)
 
     let (file_writer, guard) = non_blocking(file_appender);

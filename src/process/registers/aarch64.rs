@@ -5,9 +5,6 @@ use nix::unistd::Pid;
 use crate::process::{Register, RegisterBackend, RegisterValue};
 
 /// Current state of the registers for the debugged process.
-///
-/// this is a glorified wrapper around the `user` struct, but deconstructed
-/// to the pieces we need.
 #[derive(Clone, Debug)]
 pub struct RegisterSnapshot {
     pid: Pid,
@@ -25,10 +22,7 @@ impl RegisterSnapshot {
     }
 }
 
-pub struct ArchRegisterBackend;
-
-impl RegisterBackend for ArchRegisterBackend {
-    fn read_all_registers(_pid: Pid) -> Result<RegisterSnapshot> {
-        todo!("impl me");
-    }
+pub fn read_all_registers(_pid: Pid) -> Result<RegisterSnapshot> {
+    todo!("impl me");
 }
+

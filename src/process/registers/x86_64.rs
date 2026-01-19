@@ -11,7 +11,6 @@ use crate::process::register_info::{
     Location, Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, UserField,
     registers_info,
 };
-use crate::process::registers::RegisterBackend;
 
 static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
     let mut regs = HashMap::new();
@@ -183,23 +182,20 @@ fn value_from_bytes(bytes: &[u8], start: usize, info: &RegisterInfo) -> Register
     }
 }
 
-pub struct ArchRegisterBackend;
+pub fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
+    let gp_reg = getregset::<regset::NT_PRSTATUS>(pid).unwrap();
+    let fp_reg = getregset::<regset::NT_PRFPREG>(pid).unwrap();
 
-impl RegisterBackend for ArchRegisterBackend {
-    fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
-        let gp_reg = getregset::<regset::NT_PRSTATUS>(pid).unwrap();
-        let fp_reg = getregset::<regset::NT_PRFPREG>(pid).unwrap();
-
-        // read out the debug registers
-        let mut debug_regs = [0; 8];
-        let base_regs_offset = offset_of!(user, u_debugreg);
-        for (i, e) in debug_regs.iter_mut().enumerate() {
-            // TODO: don't hardcode the offset
-            let offset = base_regs_offset + (i * 8);
-            let reg = read_user(pid, offset as _).unwrap();
-            *e = reg as u64;
-        }
-
-        Ok(RegisterSnapshot::new(pid, gp_reg, fp_reg, debug_regs))
+    // read out the debug registers
+    let mut debug_regs = [0; 8];
+    let base_regs_offset = offset_of!(user, u_debugreg);
+    for (i, e) in debug_regs.iter_mut().enumerate() {
+        // TODO: don't hardcode the offset
+        let offset = base_regs_offset + (i * 8);
+        let reg = read_user(pid, offset as _).unwrap();
+        *e = reg as u64;
     }
+
+    Ok(RegisterSnapshot::new(pid, gp_reg, fp_reg, debug_regs))
 }
+
