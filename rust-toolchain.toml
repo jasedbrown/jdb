@@ -1,5 +1,5 @@
 [toolchain]
-channel = "1.91.0"
+channel = "1.91.1"
 profile = "default"
 components = [ "clippy", "rustfmt", "rust-analyzer" ]
 targets = [ "aarch64-unknown-linux-gnu", "riscv64gc-unknown-linux-gnu" ]
