@@ -2,6 +2,7 @@
 use crate::process::{Register, RegisterValue};
 use anyhow::Result;
 use libc::{user_fpsimd_struct, user_regs_struct};
+use nix::sys::ptrace::{getregset, read_user, regset, setregset, write_user};
 use nix::unistd::Pid;
 
 /// Current state of the registers for the debugged process.
@@ -17,11 +18,31 @@ pub struct RegisterSnapshot {
 }
 
 impl RegisterSnapshot {
+    fn new(
+        pid: Pid,
+        gp_regs: user_regs_struct,
+        fp_regs: user_fpsimd_struct,
+    ) -> Self {
+        Self {
+            pid,
+            user_gp: gp_regs,
+            user_fp: fp_regs,
+        }
+    }
+
     pub fn read(&self, _register: &Register) -> RegisterValue {
+        todo!("impl me");
+    }
+
+    #[allow(dead_code)]
+    pub fn write(&mut self, _register: Register, _value: RegisterValue) -> Result<()> {
         todo!("impl me");
     }
 }
 
-pub fn read_all_registers(_pid: Pid) -> Result<RegisterSnapshot> {
-    todo!("impl me");
+pub fn read_all_registers(pid: Pid) -> Result<RegisterSnapshot> {
+    let gp_reg = getregset::<regset::NT_PRSTATUS>(pid).unwrap();
+    let fp_reg = getregset::<regset::NT_PRFPREG>(pid).unwrap();
+
+    Ok(RegisterSnapshot::new(pid, gp_reg, fp_reg))
 }
