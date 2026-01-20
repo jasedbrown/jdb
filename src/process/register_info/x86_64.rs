@@ -292,6 +292,7 @@ impl UserField {
 }
 
 impl Location {
+    /// Returns the byte offset into `libc::user` for this register and width.
     const fn offset(self, width: RegisterWidth) -> usize {
         let base = match self {
             Location::Regs(field) => memoffset::offset_of!(libc::user, regs) + field.offset(),

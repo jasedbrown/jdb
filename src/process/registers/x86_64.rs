@@ -8,8 +8,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use crate::process::register_info::{
-    Location, Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, UserField,
-    registers_info,
+    Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, registers_info,
 };
 
 static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
@@ -61,25 +60,26 @@ impl RegisterSnapshot {
 
     pub fn read(&self, register: &Register) -> RegisterValue {
         let info = expect_register_info(register);
-        match info.loc {
+        match info.register_type {
             // Offsets are computed relative to the `user` struct; we store only the
             // component struct, so adjust by the field offset.
-            Location::Regs(_) => {
+            RegisterType::GeneralPurpose | RegisterType::SubGeneralPurpose => {
                 let start = info.offset - offset_of!(user, regs);
                 value_from_bytes(struct_as_bytes(&self.user_gp), start, info)
             }
-            Location::Fpu(_) | Location::FpuArray(_, _) => {
+            RegisterType::FloatingPoint => {
                 let start = info.offset - offset_of!(user, i387);
                 value_from_bytes(struct_as_bytes(&self.user_fp), start, info)
             }
-            Location::UserArray(UserField::UDebugReg, idx) => {
+            RegisterType::Debug => {
                 // Debug registers are stored separately; use the cached array.
-                let start = idx * info.size;
+                let start = info.offset - offset_of!(user, u_debugreg);
                 value_from_bytes(slice_as_bytes(&self.debug_regs), start, info)
             }
         }
     }
 
+    #[allow(dead_code)]
     pub fn write(&mut self, register: Register, value: RegisterValue) -> Result<()> {
         // TODO: there's a lot of incomplete work here ...
         // including a problem of writing a reg value less than u64 :shrug:

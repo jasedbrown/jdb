@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::process::{Register, RegisterBackend, RegisterValue};
+use crate::process::{Register, RegisterValue};
 use anyhow::Result;
 use libc::{user_fpsimd_struct, user_regs_struct};
 use nix::unistd::Pid;

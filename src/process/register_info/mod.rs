@@ -21,7 +21,7 @@ pub use riscv64::*;
 #[derive(Clone, Debug)]
 pub struct RegisterInfo {
     pub register: Register,
-    /// The actual name of the register, as appears in the `user` family of structs.
+    /// The actual name of the register, as appears in the linux structs.
     pub name: &'static str,
     pub dwarf_id: i32,
     /// The byte offset into the `user` struct of this register.
