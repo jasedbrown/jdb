@@ -18,11 +18,7 @@ pub struct RegisterSnapshot {
 }
 
 impl RegisterSnapshot {
-    fn new(
-        pid: Pid,
-        gp_regs: user_regs_struct,
-        fp_regs: user_fpsimd_struct,
-    ) -> Self {
+    fn new(pid: Pid, gp_regs: user_regs_struct, fp_regs: user_fpsimd_struct) -> Self {
         Self {
             pid,
             user_gp: gp_regs,

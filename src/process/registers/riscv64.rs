@@ -22,10 +22,7 @@ pub struct RegisterSnapshot {
 }
 
 impl RegisterSnapshot {
-    fn new(
-        pid: Pid,
-        gp_regs: user_regs_struct,
-    ) -> Self {
+    fn new(pid: Pid, gp_regs: user_regs_struct) -> Self {
         Self {
             pid,
             user_gp: gp_regs,
@@ -36,7 +33,6 @@ impl RegisterSnapshot {
         todo!("impl me");
     }
 
-    
     #[allow(dead_code)]
     pub fn write(&mut self, _register: Register, _value: RegisterValue) -> Result<()> {
         todo!("impl me");
