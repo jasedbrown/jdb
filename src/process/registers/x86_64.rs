@@ -4,22 +4,10 @@ use memoffset::offset_of;
 use nix::sys::ptrace::{getregset, read_user, regset, setregset, write_user};
 use nix::unistd::Pid;
 
-use std::collections::HashMap;
-use std::sync::LazyLock;
-
 use crate::process::register_info::{
-    Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue, registers_info,
+    Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue,
 };
-
-static REGISTERS_MAP: LazyLock<HashMap<Register, RegisterInfo>> = LazyLock::new(|| {
-    let mut regs = HashMap::new();
-
-    registers_info().iter().for_each(|r| {
-        regs.insert(r.register, r.clone());
-    });
-
-    regs
-});
+use crate::process::registers::REGISTERS_MAP;
 
 fn expect_register_info(register: &Register) -> &RegisterInfo {
     REGISTERS_MAP

@@ -7,7 +7,6 @@
 //! higher than a bunch of super fucking complicated macros ... :shrug:
 
 use crate::process::register_info::{RegisterFormat, RegisterInfo, RegisterType, RegisterWidth};
-use std::sync::LazyLock;
 
 /// All registers supported by the debugger for x86_64.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
@@ -308,8 +307,8 @@ impl Location {
 }
 
 /// Declarative metadata describing how to locate and format a register.
-#[derive(Copy, Clone, Debug)]
-pub struct RegisterDecl {
+#[derive(Clone, Debug)]
+struct RegisterDecl {
     pub register: Register,
     pub name: &'static str,
     pub dwarf: i32,
@@ -334,7 +333,7 @@ impl From<&RegisterDecl> for RegisterInfo {
     }
 }
 
-pub const REGISTER_DECLS: &[RegisterDecl] = &[
+const REGISTER_DECLS: &[RegisterDecl] = &[
     // 64-bit registers
     RegisterDecl {
         register: Register::RAX,
@@ -1463,9 +1462,6 @@ pub const REGISTER_DECLS: &[RegisterDecl] = &[
     },
 ];
 
-pub static REGISTERS_INFO: LazyLock<Vec<RegisterInfo>> =
-    LazyLock::new(|| REGISTER_DECLS.iter().map(RegisterInfo::from).collect());
-
-pub fn registers_info() -> &'static [RegisterInfo] {
-    REGISTERS_INFO.as_slice()
+pub fn registers_info_iter() -> impl Iterator<Item = RegisterInfo> {
+    REGISTER_DECLS.iter().map(RegisterInfo::from)
 }

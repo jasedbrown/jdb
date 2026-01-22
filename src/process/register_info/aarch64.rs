@@ -1,3 +1,7 @@
+//! Centralized declaration of all supported CPU registers for riscv64.
+
+use crate::process::register_info::{RegisterFormat, RegisterInfo, RegisterType, RegisterWidth};
+
 /// All registers supported by the debugger for aarch64.
 ///
 /// The 32-bit general purpose registers are just the lower 32 bits
@@ -307,4 +311,58 @@ pub enum Register {
     B29,
     B30,
     B31,
+}
+
+/// Declarative metadata describing how to locate and format a register.
+#[derive(Copy, Clone, Debug)]
+struct RegisterDecl {
+    pub register: Register,
+    pub name: &'static str,
+    pub dwarf: i32,
+    pub width: RegisterWidth,
+    pub reg_type: RegisterType,
+    pub format: RegisterFormat,
+}
+
+impl RegisterDecl {
+    /// Derive the struct offset for a given register.
+    ///
+    /// slightly janky, assumes all decl widths are the same (which they are
+    /// for general purpose and floating point regs), and that the DWARF ID
+    /// is an incremental value from 0-31 within the target struct (which is also
+    /// true for the _currently supported_ riscv structs/registers)
+    fn offset(&self) -> usize {
+        (self.dwarf % 32) as usize * self.width.bytes()
+    }
+}
+
+impl From<&RegisterDecl> for RegisterInfo {
+    fn from(decl: &RegisterDecl) -> Self {
+        Self {
+            register: decl.register,
+            name: decl.name,
+            dwarf_id: decl.dwarf,
+            offset: decl.offset(),
+            size: decl.width.bytes(),
+            width: decl.width,
+            register_type: decl.reg_type,
+            format: decl.format,
+        }
+    }
+}
+
+const REGISTER_DECLS: &[RegisterDecl] = &[
+    // 64-bit registers
+    RegisterDecl {
+        register: Register::X0,
+        name: "x0",
+        dwarf: 0,
+        width: RegisterWidth::W64,
+        reg_type: RegisterType::GeneralPurpose,
+        format: RegisterFormat::Uint64,
+    },
+];
+
+pub fn registers_info_iter() -> impl Iterator<Item = RegisterInfo> {
+    REGISTER_DECLS.iter().map(RegisterInfo::from)
 }
