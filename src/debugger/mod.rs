@@ -7,6 +7,8 @@ use crate::process::stoppoint::{StoppointId, VirtualAddress};
 
 pub struct Debugger {
     /// Flag if the program is currently being debugged.
+    ///
+    /// This will be `false` before we've started the inferior or after it has exited.
     debugging: bool,
     /// A log of all the commands executed against the debugger, historical and current.
     history: CommandHistory,

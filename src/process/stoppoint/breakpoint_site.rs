@@ -13,10 +13,12 @@ fn next_id() -> StoppointId {
 /// A software breakpoint.
 #[derive(Clone, Debug)]
 pub struct BreakpointSite {
+    /// Unique identifier for the stoppoint.
     id: StoppointId,
     //process: Process ???
     address: VirtualAddress,
 
+    /// State of the stoppoint (basically, is it enabled or disabled?).
     state: StoppointState,
 }
 

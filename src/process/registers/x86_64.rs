@@ -15,9 +15,9 @@ fn expect_register_info(register: &Register) -> &RegisterInfo {
         .unwrap_or_else(|| panic!("unknown register: {register:?}"))
 }
 
-/// Current state of the registers for the debugged process.
+/// Current state of the registers for the inferior process.
 ///
-/// this is a glorified wrapper around the `user` struct, but deconstructed
+/// This is a glorified wrapper around the `user` struct, but deconstructed
 /// to the pieces we need.
 #[derive(Clone, Debug)]
 pub struct RegisterSnapshot {

@@ -85,6 +85,9 @@ fn read_history(history_file: &PathBuf) -> Result<Vec<String>> {
     }
 }
 
+/// Find the history file for the debugger.
+///
+/// Defaults to `$XDG_CACHE_HOME/jdb/history`.
 fn resolve_history_file() -> Result<PathBuf> {
     let path = env::var_os("XDG_CACHE_HOME")
         .and_then(|p| {

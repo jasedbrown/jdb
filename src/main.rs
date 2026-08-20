@@ -64,14 +64,17 @@ fn main() -> Result<()> {
 
     let mut debugger = Debugger::new()?;
 
+    // send/recv channels for communicating with the inferior
     let (process_tx, process_rx) = unbounded();
     let (process_shutdown_tx, process_shutdown_rx) = unbounded();
     let mut process = Process::new(options, process_tx, process_shutdown_rx);
 
+    // send/recv channels for communicating with the tui
     let (tui_tx, tui_rx) = unbounded();
     let (tui_shutdown_tx, tui_shutdown_rx) = unbounded();
     let mut tui = Tui::new(tui_tx, tui_shutdown_rx)?;
 
+    // the main event loop
     loop {
         tui.render(&debugger, &process)?;
         select! {
@@ -80,7 +83,7 @@ fn main() -> Result<()> {
                 Ok(s) => process.receive_inferior_logging(s),
                 Err(e) => error!("Error receiving message from inferior processing logging: {:?}", e),
             },
-            // handle key presses
+            // handle key presses from the user
             recv(tui_rx) -> msg => match msg {
                 Ok(jdb_event) => match jdb_event {
                     JdbEvent::TerminalKey(key_event) => {
@@ -92,7 +95,7 @@ fn main() -> Result<()> {
                                 trace!(?command, "next editor command");
                                 match debugger.next(command, &mut process) {
                                     Ok(DispatchResult::Normal) => {
-                                        // i think we want to redraw here (esp for moving forward in src, variable updating, ...)
+                                        // nop? we'll redraw on the next loop iteration
                                     }
                                     Ok(DispatchResult::Exit) => {
                                         tui.record_command_response("exiting debugger");
@@ -105,9 +108,7 @@ fn main() -> Result<()> {
                                 }
                             }
                             Ok(EventResult::Quit) => {
-                                // If i actually allow this from the TUI, need to stop debugger/inferior process
-                                break;
-
+                                break
                             },
                             Err(e) => error!("Error received from tui message channel: {:?}", e),
                         }

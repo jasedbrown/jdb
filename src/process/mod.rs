@@ -38,6 +38,7 @@ pub enum ProcessState {
     Unknown,
     /// The inferior process is stopped, awaiting a nudge from debugger.
     Stopped,
+    /// The inferior process is, unsurprisingly, running.
     Running,
     /// The inferior process exited normally.
     Exited,
@@ -62,7 +63,7 @@ pub struct Inferior {
     /// The raw file descriptor for the inferior's stdout/stderr.
     pub reader_fd: OwnedFd,
 
-    /// The active, enablkes breakpoints on this running inferior.
+    /// The active, enabled breakpoints on this running inferior.
     /// The map's values are the original instructions that we replaced with
     /// `int3`.
     breakpoint_sites: HashMap<StoppointId, u8>,
@@ -73,9 +74,9 @@ impl Inferior {
         self.pid
     }
 
+    /// Enable the breakpoint in the inferior process.
     fn enable_breakpoint_site(&mut self, breakpoint_site: &BreakpointSite) -> Result<()> {
         if self.breakpoint_sites.contains_key(&breakpoint_site.id()) {
-            // not sure if we should error or just silently return
             return Ok(());
         }
 
@@ -95,6 +96,7 @@ impl Inferior {
         Ok(())
     }
 
+    /// Disable the breakpoint in the inferior process.
     fn disable_breakpoint_site(&mut self, breakpoint_site: &BreakpointSite) -> Result<()> {
         let saved_instruction = match self.breakpoint_sites.remove(&breakpoint_site.id()) {
             Some(v) => v,
@@ -102,11 +104,6 @@ impl Inferior {
                 return Ok(());
             }
         };
-
-        if !self.breakpoint_sites.contains_key(&breakpoint_site.id()) {
-            // not sure if we should error or just silently return
-            return Ok(());
-        }
 
         let instruction_line = ptrace::read(self.pid, breakpoint_site.address().addr() as _)?;
         let restored_line = (instruction_line & !0xFF) | saved_instruction as i64;
@@ -123,15 +120,21 @@ impl Inferior {
 #[allow(dead_code)]
 pub struct Process {
     cli_options: Options,
-    /// State of the inferior process.
+    /// State of an inferior process.
     state: ProcessState,
-    target_process: Option<Inferior>,
+    /// The inferior being debugged. Will be `None` if the process has not executed
+    /// or has exited.
+    inferior_process: Option<Inferior>,
+    /// Snapshot of the inferior's register values. Maintained independently
+    /// of the `inferior_process` such that the regisrters can be inspected
+    /// after the inferior exits.
     registers: Option<RegisterSnapshot>,
     /// Captured stdout/stderr from the inferior process.
-    /// We reason the inferior output is stored here, rather than in
+    ///
+    /// The reason the inferior output is stored here, rather than in
     /// `Inferior` is that we'd like the output to still be available
     /// for tui rendering even after the inferior has existed (and we've
-    /// tansistioned the state/target_process).
+    /// transistioned the state/inferior_process).
     /// -- I might revisit this decision, though.
     // Vec is a starting point/placeholder for now, would prefer
     // something like a circular buffer
@@ -153,7 +156,7 @@ impl Process {
         Process {
             cli_options,
             state: ProcessState::Unknown,
-            target_process: None,
+            inferior_process: None,
             inferior_output: Vec::new(),
             registers: None,
             inferior_tx,
@@ -183,7 +186,7 @@ impl Process {
             read_inferior_logging(fd_clone, inferior_tx_clone, shutdown_rx_clone);
         });
         self.logging_thread = Some(logging_thread);
-        self.target_process = Some(inferior);
+        self.inferior_process = Some(inferior);
 
         // TODO: not sure about setting the state here to Running ...
         self.state = ProcessState::Running;
@@ -191,7 +194,7 @@ impl Process {
 
         // now that the inferior is ready, set any enabled breakpoints.
         // TODO: check WaitStatus is good before trying to set the breakpoints.
-        let inferior = self.target_process.as_mut().expect("just created");
+        let inferior = self.inferior_process.as_mut().expect("just created");
         for b in self.breakpoint_sites.iter() {
             if b.is_enabled() {
                 inferior.enable_breakpoint_site(b)?;
@@ -202,7 +205,7 @@ impl Process {
     }
 
     pub fn pid(&self) -> Option<Pid> {
-        if let Some(ref inferior) = self.target_process {
+        if let Some(ref inferior) = self.inferior_process {
             return Some(inferior.pid());
         }
         None
@@ -212,6 +215,9 @@ impl Process {
         self.pid().expect("Should have PID at this point")
     }
 
+    /// Continue (resume) debugging the inferior process.
+    ///
+    /// Essentially does `PTRACE_CONT`.
     pub fn resume(&mut self) -> Result<()> {
         if !matches!(self.state, ProcessState::Stopped | ProcessState::Running) {
             return Err(anyhow!("Inferior process not being debugged"));
@@ -224,6 +230,8 @@ impl Process {
         Ok(())
     }
 
+    /// Wait for the inferior to change it's status (i.e. hit a breakpoint
+    /// or exit/terminate).
     pub fn wait_on_signal(&mut self) -> Result<WaitStatus> {
         let wait_status = waitpid(self.expect_pid(), None)?;
 
@@ -294,12 +302,13 @@ impl Process {
             .map(|snapshot| snapshot.read(&register))
     }
 
+    /// React to a breakpoint command the user has issued. 
     pub fn breakpoint_command(&mut self, command: BreakpointCommand) -> Result<()> {
         // TODO: rewrite this function, and maybe change the Vec -> HashMap ??
         match command {
             BreakpointCommand::Create(address) => {
                 let b = self.create_breakpoint_site(address)?;
-                if let Some(inferior) = self.target_process.as_mut() {
+                if let Some(inferior) = self.inferior_process.as_mut() {
                     inferior.enable_breakpoint_site(&b)?;
                 }
             }
@@ -312,16 +321,17 @@ impl Process {
                     }
                 };
 
-                if let Some(inferior) = self.target_process.as_mut() {
+                if let Some(inferior) = self.inferior_process.as_mut() {
                     inferior.disable_breakpoint_site(b)?
                 }
 
+                // the second full iteration is weak, but largely inconsequential perf-wise.
                 self.breakpoint_sites.retain(|b| b.id() != id);
             }
             BreakpointCommand::Enable(id) => {
                 for b in self.breakpoint_sites.iter_mut() {
                     if b.id() == id {
-                        if let Some(inferior) = self.target_process.as_mut() {
+                        if let Some(inferior) = self.inferior_process.as_mut() {
                             inferior.enable_breakpoint_site(b)?;
                         }
                         b.enable();
@@ -331,7 +341,7 @@ impl Process {
             BreakpointCommand::Disable(id) => {
                 for b in self.breakpoint_sites.iter_mut() {
                     if b.id() == id {
-                        if let Some(inferior) = self.target_process.as_mut() {
+                        if let Some(inferior) = self.inferior_process.as_mut() {
                             inferior.disable_breakpoint_site(b)?;
                         }
                         b.disable();
