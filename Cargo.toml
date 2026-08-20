@@ -11,9 +11,9 @@ libc = "0.2.177"
 log = "0.4"
 memoffset = "0.9.1"
 mio = { version = "1.1.0", features = ["os-ext"] }
-nix = { version = "0.30", features = ["fs", "personality", "ptrace", "signal", "term"] }
+nix = { version = "0.31", features = ["fs", "personality", "ptrace", "signal", "term"] }
 ratatui = "0.30"
-strum = { version = "0.27", features = ["derive"] }
+strum = { version = "0.28", features = ["derive"] }
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
