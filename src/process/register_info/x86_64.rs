@@ -326,7 +326,7 @@ impl From<&RegisterDecl> for RegisterInfo {
             dwarf_id: decl.dwarf,
             offset: decl.loc.offset(decl.width),
             size: decl.width.bytes(),
-            width: decl.width,
+            //width: decl.width,
             register_type: decl.reg_type,
             format: decl.format,
         }

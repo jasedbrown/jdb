@@ -29,7 +29,7 @@ impl TryFrom<Vec<String>> for StoppointId {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct VirtualAddress {
-    address: u64,
+    pub address: u64,
 }
 
 impl TryFrom<Vec<String>> for VirtualAddress {

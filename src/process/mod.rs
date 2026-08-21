@@ -9,10 +9,10 @@ use nix::sys::wait::{WaitStatus, waitpid};
 use nix::unistd::{
     ForkResult, Pid, close, dup, dup2_stderr, dup2_stdin, dup2_stdout, execvp, fork, setsid,
 };
-use std::collections::HashMap;
+
 use std::ffi::{CStr, CString};
 use std::fs::File;
-use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::thread::{self, JoinHandle};
@@ -20,11 +20,11 @@ use tracing::trace;
 
 use crate::debugger::BreakpointCommand;
 use crate::options::{Aslr, Options};
-use crate::process::inferior::read_inferior_logging;
+use crate::process::inferior::{Inferior, read_inferior_logging};
 use crate::process::register_info::{Register, RegisterValue};
 use crate::process::registers::{RegisterSnapshot, read_all_registers};
+use crate::process::stoppoint::VirtualAddress;
 use crate::process::stoppoint::breakpoint_site::BreakpointSite;
-use crate::process::stoppoint::{INTERRUPT_INSTRUCTION, StoppointId, VirtualAddress};
 
 mod inferior;
 pub mod register_info;
@@ -44,76 +44,6 @@ pub enum ProcessState {
     Exited,
     /// The inferior process terminated, either normally or forcefully.
     Terminated,
-}
-
-/// Represents a process ("inferior") that the debugger has spawned
-/// under a pseudo-terminal (PTY).  
-///
-/// This structure owns all handles necessary for I/O, resizing, and
-/// signal control of the inferior process.  It is the debugger’s view
-/// of “the program being debugged.”
-#[derive(Debug)]
-pub struct Inferior {
-    /// PID of the inferior process.
-    pid: Pid,
-    /// PTY master fd (for resize/ioctl).
-    pub master_fd: RawFd,
-    /// Writer to stdin (own fd).
-    pub writer: File,
-    /// The raw file descriptor for the inferior's stdout/stderr.
-    pub reader_fd: OwnedFd,
-
-    /// The active, enabled breakpoints on this running inferior.
-    /// The map's values are the original instructions that we replaced with
-    /// `int3`.
-    breakpoint_sites: HashMap<StoppointId, u8>,
-}
-
-impl Inferior {
-    pub fn pid(&self) -> Pid {
-        self.pid
-    }
-
-    /// Enable the breakpoint in the inferior process.
-    fn enable_breakpoint_site(&mut self, breakpoint_site: &BreakpointSite) -> Result<()> {
-        if self.breakpoint_sites.contains_key(&breakpoint_site.id()) {
-            return Ok(());
-        }
-
-        let instruction_line = ptrace::read(self.pid, breakpoint_site.address().addr() as _)?;
-        let saved_instruction = (instruction_line & 0xff) as u8;
-
-        let new_instruction_line = (instruction_line & !0xFF) | INTERRUPT_INSTRUCTION;
-        ptrace::write(
-            self.pid,
-            breakpoint_site.address().addr() as _,
-            new_instruction_line,
-        )?;
-
-        self.breakpoint_sites
-            .insert(breakpoint_site.id(), saved_instruction);
-
-        Ok(())
-    }
-
-    /// Disable the breakpoint in the inferior process.
-    fn disable_breakpoint_site(&mut self, breakpoint_site: &BreakpointSite) -> Result<()> {
-        let saved_instruction = match self.breakpoint_sites.remove(&breakpoint_site.id()) {
-            Some(v) => v,
-            None => {
-                return Ok(());
-            }
-        };
-
-        let instruction_line = ptrace::read(self.pid, breakpoint_site.address().addr() as _)?;
-        let restored_line = (instruction_line & !0xFF) | saved_instruction as i64;
-        ptrace::write(
-            self.pid,
-            breakpoint_site.address().addr() as _,
-            restored_line,
-        )?;
-        Ok(())
-    }
 }
 
 /// The primary struct containing information about the process being debugged.
@@ -230,12 +160,20 @@ impl Process {
         Ok(())
     }
 
+    pub fn set_pc(&mut self, address: VirtualAddress) -> Result<()> {
+        let Some(registers) = self.registers.as_mut() else {
+            return Err(anyhow!("No registers yet"));
+        };
+        registers.set_pc(address)
+    }
+
     /// Wait for the inferior to change it's status (i.e. hit a breakpoint
     /// or exit/terminate).
     pub fn wait_on_signal(&mut self) -> Result<WaitStatus> {
         let wait_status = waitpid(self.expect_pid(), None)?;
+        trace!("signal received: {:?}", &wait_status);
 
-        // if exited/terminated, send shutdown signal to inferior reader
+        // TODO: if exited/terminated, send shutdown signal to inferior reader
         match wait_status {
             WaitStatus::Exited(_, _) => {
                 self.state = ProcessState::Exited;
@@ -243,13 +181,25 @@ impl Process {
             WaitStatus::Signaled(_, _, _) => {
                 self.state = ProcessState::Terminated;
             }
-            WaitStatus::Stopped(_, _) => self.state = ProcessState::Stopped,
+            WaitStatus::Stopped(_, signal) => {
+                let mut registers = read_all_registers(self.expect_pid())?;
+                if matches!(signal, Signal::SIGTRAP) {
+                    // set the PC back one, to where the breakpoint currently is
+                    let cur_pc = registers.get_pc()?;
+                    let instr_begin = VirtualAddress::from(cur_pc.address - 1_u64);
+                    if self
+                        .breakpoint_sites
+                        .iter()
+                        .any(|b| b.address() == instr_begin && b.is_enabled())
+                    {
+                        registers.set_pc(instr_begin)?;
+                    }
+                }
+                self.registers = Some(registers);
+                self.state = ProcessState::Stopped
+            }
             _ => {}
         };
-
-        if matches!(self.state, ProcessState::Stopped) {
-            self.registers = Some(read_all_registers(self.expect_pid())?);
-        }
 
         Ok(wait_status)
     }
@@ -302,7 +252,7 @@ impl Process {
             .map(|snapshot| snapshot.read(&register))
     }
 
-    /// React to a breakpoint command the user has issued. 
+    /// React to a breakpoint command the user has issued.
     pub fn breakpoint_command(&mut self, command: BreakpointCommand) -> Result<()> {
         // TODO: rewrite this function, and maybe change the Vec -> HashMap ??
         match command {
@@ -394,9 +344,9 @@ fn launch_executable(
 
             Ok(Some(Inferior {
                 pid: child,
-                master_fd: pty.master.as_raw_fd(),
+                _master_fd: pty.master.as_raw_fd(),
                 reader_fd: rfd.try_clone()?,
-                writer,
+                _writer: writer,
                 breakpoint_sites: Default::default(),
             }))
         }

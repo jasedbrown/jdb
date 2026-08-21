@@ -7,13 +7,8 @@ use nix::unistd::Pid;
 use crate::process::register_info::{
     Register, RegisterFormat, RegisterInfo, RegisterType, RegisterValue,
 };
-use crate::process::registers::REGISTERS_MAP;
-
-fn expect_register_info(register: &Register) -> &RegisterInfo {
-    REGISTERS_MAP
-        .get(register)
-        .unwrap_or_else(|| panic!("unknown register: {register:?}"))
-}
+use crate::process::registers::expect_register_info;
+use crate::process::stoppoint::VirtualAddress;
 
 /// Current state of the registers for the inferior process.
 ///
@@ -67,7 +62,6 @@ impl RegisterSnapshot {
         }
     }
 
-    #[allow(dead_code)]
     pub fn write(&mut self, register: Register, value: RegisterValue) -> Result<()> {
         // TODO: there's a lot of incomplete work here ...
         // including a problem of writing a reg value less than u64 :shrug:
@@ -90,6 +84,15 @@ impl RegisterSnapshot {
         }
 
         Ok(())
+    }
+
+    pub fn get_pc(&self) -> Result<VirtualAddress> {
+        let reg_value = self.read(&Register::RIP);
+        RegisterValue::try_into(reg_value)
+    }
+
+    pub fn set_pc(&mut self, address: VirtualAddress) -> Result<()> {
+        self.write(Register::RIP, RegisterValue::from(address))
     }
 }
 

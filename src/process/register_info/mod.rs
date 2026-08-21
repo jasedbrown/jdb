@@ -20,16 +20,20 @@ pub use riscv64::*;
 /// Fully derived register information, including computed offsets and sizes.
 #[derive(Clone, Debug)]
 pub struct RegisterInfo {
+    /// Platform-specific enum representing a register.
     pub register: Register,
     /// The actual name of the register, as appears in the linux structs.
     pub name: &'static str,
+    /// DWARF ID for the register, -1 if register is not a DWARF field.
+    // TODO: consider using Option<i32> and a helper function that returns
+    // -1 when None.
     pub dwarf_id: i32,
     /// The byte offset into the `user` struct of this register.
     /// Primarily used for `read_user()` and `write_user()`.
     pub offset: usize,
-    /// Size in bytes of the register's value.
+    /// Size, in bytes, of the register's value.
     pub size: usize,
-    pub width: RegisterWidth,
+    // TODO: not sure if this is/will be used.
     pub register_type: RegisterType,
     pub format: RegisterFormat,
 }
