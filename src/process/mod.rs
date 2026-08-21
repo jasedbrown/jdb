@@ -10,8 +10,10 @@ use nix::unistd::{
     ForkResult, Pid, close, dup, dup2_stderr, dup2_stdin, dup2_stdout, execvp, fork, setsid,
 };
 
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::fs::File;
+use std::ops::{Deref, DerefMut};
 use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -23,8 +25,8 @@ use crate::options::{Aslr, Options};
 use crate::process::inferior::{Inferior, read_inferior_logging};
 use crate::process::register_info::{Register, RegisterValue};
 use crate::process::registers::{RegisterSnapshot, read_all_registers};
-use crate::process::stoppoint::VirtualAddress;
 use crate::process::stoppoint::breakpoint_site::BreakpointSite;
+use crate::process::stoppoint::{StoppointId, VirtualAddress};
 
 mod inferior;
 pub mod register_info;
@@ -46,8 +48,40 @@ pub enum ProcessState {
     Terminated,
 }
 
+/// Collection of all known breakpoints.
+///
+/// Breakpoints may be enabled or disabled. Currently, all addresses
+/// must be unique; that is, we don't allow multiple breakpoints at the
+/// same location (i will probably need to lift this in the future).
+#[derive(Default)]
+struct StoppointSites(HashMap<StoppointId, BreakpointSite>);
+
+impl Deref for StoppointSites {
+    type Target = HashMap<StoppointId, BreakpointSite>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for StoppointSites {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl StoppointSites {
+    fn contiains_vaddr(&self, address: &VirtualAddress) -> bool {
+        self.0.iter().any(|(_, b)| b.address() == *address)
+    }
+
+    fn contiains_enabled_vaddr(&self, address: &VirtualAddress) -> bool {
+        self.0
+            .iter()
+            .any(|(_, b)| b.address() == *address && b.is_enabled())
+    }
+}
+
 /// The primary struct containing information about the process being debugged.
-#[allow(dead_code)]
 pub struct Process {
     cli_options: Options,
     /// State of an inferior process.
@@ -73,7 +107,10 @@ pub struct Process {
     shutdown_rx: Receiver<()>,
     logging_thread: Option<JoinHandle<()>>,
 
-    breakpoint_sites: Vec<BreakpointSite>,
+    /// Collection of all enabled and disabled breakpoints that this debugger
+    /// process has tracked. Newly spawned inferior processes will have any enabled
+    /// breakpoints set in them.
+    breakpoint_sites: StoppointSites,
 }
 
 impl Process {
@@ -125,7 +162,7 @@ impl Process {
         // now that the inferior is ready, set any enabled breakpoints.
         // TODO: check WaitStatus is good before trying to set the breakpoints.
         let inferior = self.inferior_process.as_mut().expect("just created");
-        for b in self.breakpoint_sites.iter() {
+        for b in self.breakpoint_sites.values() {
             if b.is_enabled() {
                 inferior.enable_breakpoint_site(b)?;
             }
@@ -153,6 +190,8 @@ impl Process {
             return Err(anyhow!("Inferior process not being debugged"));
         }
 
+        let pc = self.get_pc()?;
+
         let pid = self.expect_pid();
         ptrace::cont(pid, None)?;
         self.state = ProcessState::Running;
@@ -160,11 +199,11 @@ impl Process {
         Ok(())
     }
 
-    pub fn set_pc(&mut self, address: VirtualAddress) -> Result<()> {
-        let Some(registers) = self.registers.as_mut() else {
+    fn get_pc(&self) -> Result<VirtualAddress> {
+        let Some(registers) = self.registers.as_ref() else {
             return Err(anyhow!("No registers yet"));
         };
-        registers.set_pc(address)
+        registers.get_pc()
     }
 
     /// Wait for the inferior to change it's status (i.e. hit a breakpoint
@@ -187,11 +226,7 @@ impl Process {
                     // set the PC back one, to where the breakpoint currently is
                     let cur_pc = registers.get_pc()?;
                     let instr_begin = VirtualAddress::from(cur_pc.address - 1_u64);
-                    if self
-                        .breakpoint_sites
-                        .iter()
-                        .any(|b| b.address() == instr_begin && b.is_enabled())
-                    {
+                    if self.breakpoint_sites.contiains_enabled_vaddr(&instr_begin) {
                         registers.set_pc(instr_begin)?;
                     }
                 }
@@ -254,17 +289,25 @@ impl Process {
 
     /// React to a breakpoint command the user has issued.
     pub fn breakpoint_command(&mut self, command: BreakpointCommand) -> Result<()> {
-        // TODO: rewrite this function, and maybe change the Vec -> HashMap ??
         match command {
             BreakpointCommand::Create(address) => {
-                let b = self.create_breakpoint_site(address)?;
+                if self.breakpoint_sites.contiains_vaddr(&address) {
+                    // either silently ignore (and return existing value) or return error?
+                    return Err(anyhow!(
+                        "Breakpoint site already exists for address {:?}",
+                        address
+                    ));
+                }
+
+                let b = BreakpointSite::new(address);
+                self.breakpoint_sites.insert(b.id(), b.clone());
+
                 if let Some(inferior) = self.inferior_process.as_mut() {
                     inferior.enable_breakpoint_site(&b)?;
                 }
             }
             BreakpointCommand::Delete(id) => {
-                // the mutliple iterations are kinda weak ...
-                let b = match self.breakpoint_sites.iter().find(|b| b.id() == id) {
+                let b = match self.breakpoint_sites.remove(&id) {
                     Some(b) => b,
                     None => {
                         return Err(anyhow!("Cannot find breakpoitn by id {:?}", id));
@@ -272,51 +315,31 @@ impl Process {
                 };
 
                 if let Some(inferior) = self.inferior_process.as_mut() {
-                    inferior.disable_breakpoint_site(b)?
+                    inferior.disable_breakpoint_site(&b)?
                 }
-
-                // the second full iteration is weak, but largely inconsequential perf-wise.
-                self.breakpoint_sites.retain(|b| b.id() != id);
             }
             BreakpointCommand::Enable(id) => {
-                for b in self.breakpoint_sites.iter_mut() {
-                    if b.id() == id {
-                        if let Some(inferior) = self.inferior_process.as_mut() {
-                            inferior.enable_breakpoint_site(b)?;
-                        }
-                        b.enable();
+                if let Some(b) = self.breakpoint_sites.get_mut(&id) {
+                    if let Some(inferior) = self.inferior_process.as_mut() {
+                        inferior.enable_breakpoint_site(b)?;
                     }
+                    b.enable();
                 }
             }
             BreakpointCommand::Disable(id) => {
-                for b in self.breakpoint_sites.iter_mut() {
-                    if b.id() == id {
-                        if let Some(inferior) = self.inferior_process.as_mut() {
-                            inferior.disable_breakpoint_site(b)?;
-                        }
-                        b.disable();
+                if let Some(b) = self.breakpoint_sites.get_mut(&id) {
+                    if let Some(inferior) = self.inferior_process.as_mut() {
+                        inferior.disable_breakpoint_site(b)?;
                     }
+                    b.disable();
                 }
             }
         }
         Ok(())
     }
-
-    fn create_breakpoint_site(&mut self, address: VirtualAddress) -> Result<BreakpointSite> {
-        if self.breakpoint_sites.iter().any(|b| b.address() == address) {
-            // either silently ignore (and return existing value) or return error?
-            return Err(anyhow!(
-                "Breakpoint site already exists for address {:?}",
-                address
-            ));
-        }
-
-        let b = BreakpointSite::new(address);
-        self.breakpoint_sites.push(b.clone());
-        Ok(b)
-    }
 }
 
+/// Fork an inferior process and start the executable in the child.
 fn launch_executable(
     name: &Path,
     inferior_args: Vec<String>,
