@@ -38,6 +38,9 @@ We log to two places from the debugger:
 1. `$XDG_STATE_HOME`/jdb - for standard file logging
 2. The alternate screen in the TUI, "Debugger logging". It capture much of the same information as the log file, but displays it within the running debugger. It uses the ratatui widget [tui-logger](https://github.com/gin66/tui-logger), which is super helpful.
 
+## command history
+A history of user-entered commands are stored in `$XDG_CACHE_HOME/jdb/history`.
+
 ## Key bindings (TUI)
 | Context | Keys | Action |
 | --- | --- | --- |
